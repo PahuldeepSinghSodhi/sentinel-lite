@@ -1,0 +1,61 @@
+TECHCORP INDUSTRIES — PROCUREMENT & VENDOR MANAGEMENT POLICY
+Document ID: POL-2024-PROC-001
+Effective Date: January 1, 2024
+Owner: Finance & Procurement Committee
+Approved By: Chief Financial Officer & Board Audit Committee
+
+================================================================================
+SECTION 1: PURPOSE & SCOPE
+================================================================================
+This policy defines the standard operational procedures, guidelines, and compliance constraints for purchasing goods, procuring professional services, and managing external vendor contracts at TechCorp Industries ("TechCorp"). This policy applies to all employees, contractors, department heads, and executives authorized to initiate or approve purchasing requests across all operating locations.
+
+================================================================================
+SECTION 2: VENDOR APPROVAL PROCESS
+================================================================================
+2.1 All vendors providing services or goods to TechCorp must undergo formal pre-approval and be fully registered in the Vendor Management System (VMS) prior to contract execution or purchase order issuance.
+2.2 Comprehensive background checks, legal reviews, and financial solvency evaluations are strictly required for all vendor contracts exceeding $10,000 in annual cumulative value.
+2.3 Unapproved or spot vendors may not be engaged under any circumstances without prior written authorization from the Procurement Director.
+
+================================================================================
+SECTION 3: PURCHASE AUTHORIZATION LEVELS
+================================================================================
+Expenditures must be approved according to the following monetary thresholds prior to committing company funds:
+  - Under $5,000: Department Manager approval required.
+  - $5,000 - $25,000: Department Director approval required.
+  - $25,000 - $100,000: Vice President (VP) approval required, along with mandatory competitive bidding (minimum of 3 independent competitive quotes).
+  - Over $100,000: C-Suite approval (CFO/CEO) required, plus formal notification to the Board of Directors Audit Committee.
+
+================================================================================
+SECTION 4: RATE COMPLIANCE & VARIANCE RULES
+================================================================================
+4.1 All vendor billing rates, hourly rates, and fee structures MUST strictly comply with the rates specified in the official master rate card (Appendix A of Master Service Agreements).
+4.2 Rate Deviations: Any positive billing rate variance exceeding 5% above the approved rate card rate requires prior written justification from the hiring manager and explicit written approval from the departmental Vice President (VP).
+4.3 Finance is instructed to reject any invoice containing unauthorized rate overages.
+
+================================================================================
+SECTION 5: INVOICE PROCESSING & PAYMENT TERMS
+================================================================================
+5.1 Standard Invoice Requirements: All submitted vendor invoices must explicitly reference a valid TechCorp Purchase Order (PO) number and the corresponding Master Service Agreement (MSA) identifier (e.g., MSA-2023-089).
+5.2 Standard Payment Terms: Default payment terms across all vendor contracts are Net 30 days from invoice receipt date, unless alternative terms (e.g., Net 45) are explicitly negotiated and documented in an executed MSA or SOW.
+5.3 Early payment discounts (e.g., 2/10 Net 30) should be utilized whenever economically beneficial to TechCorp.
+
+================================================================================
+SECTION 6: EXPENSE REPORTING & TRAVEL CAPS
+================================================================================
+6.1 Itemized Receipts: Original itemized receipts are strictly mandatory for all business expenses exceeding $25.00.
+6.2 Travel Caps:
+    - Hotel Accommodations: Capped at a maximum of $500.00 per night (excluding taxes).
+    - Meals & Incidentals: Capped at a maximum of $75.00 per meal ($150.00 per day total).
+6.3 Airfare must be booked in Economy / Main Cabin class for domestic flights under 6 hours.
+
+================================================================================
+SECTION 7: DUPLICATE PAYMENT PREVENTION
+================================================================================
+7.1 The Accounts Payable and Finance teams must perform automated cross-checks and manual verifications to ensure no duplicate invoices (matching invoice numbers, amounts, or billing periods) exist before releasing payments.
+7.2 Any suspected duplicate submission will trigger an immediate hold on vendor account payments pending investigation.
+
+================================================================================
+SECTION 8: ANNUAL REVIEW & GOVERNANCE
+================================================================================
+8.1 This policy is reviewed annually by the Procurement Committee to adapt to regulatory changes, inflation adjustments, and business needs.
+8.2 Policy exceptions require joint written sign-off by the CFO and General Counsel.

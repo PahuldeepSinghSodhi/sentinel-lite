@@ -1,0 +1,45 @@
+================================================================================
+                               INVOICE
+================================================================================
+
+DATAFLOW INC.
+500 Data Analytics Blvd, Suite 250
+Austin, TX 78701
+Contact: finance@dataflow-inc.com | (512) 555-0144
+
+BILL TO:
+TechCorp Industries
+1000 Corporate Parkway
+San Jose, CA 95131
+Attn: Accounts Payable (ap@techcorp-example.com)
+
+--------------------------------------------------------------------------------
+INVOICE DETAILS
+--------------------------------------------------------------------------------
+Invoice Number : INV-2024-0512
+Invoice Date   : April 2, 2024
+Due Date       : May 17, 2024
+Payment Terms  : Net 45
+PO Reference   : PO-2024-9102
+Project        : Data Pipeline Development & Optimization
+
+--------------------------------------------------------------------------------
+LINE ITEMS
+--------------------------------------------------------------------------------
+Description                           Hours    Rate ($/hr)    Amount ($)
+--------------------------------------------------------------------------------
+1. Data Pipeline Architecture         30.0     $275.00         $8,250.00
+2. ETL Pipeline Development           50.0     $275.00        $13,750.00
+3. Pipeline Testing & QA              25.0     $225.00         $5,625.00
+4. Documentation & Training            5.0     $200.00         $1,000.00
+--------------------------------------------------------------------------------
+SUBTOTAL:                                                     $28,625.00
+TAX:                                                               $0.00
+TOTAL AMOUNT DUE:                                             $28,625.00
+================================================================================
+
+NOTES & REMARKS:
+- Rendered under Statement of Work #4 pursuant to Master Service Agreement MSA-2023-089.
+- Note: Billing rates reflect Q1 engineering adjustments.
+- Please remit payment to DataFlow Inc via wire transfer or ACH.
+================================================================================

@@ -1,0 +1,13 @@
+transaction_id,date,vendor_name,service_category,role_level,hours,hourly_rate,total_amount,invoice_ref,description
+TXN-001,2024-03-01,Apex Consulting,Cloud Services,Senior Engineer,40,250,10000,INV-2024-0456,Cloud Architecture Assessment
+TXN-002,2024-03-05,Apex Consulting,Cloud Services,Senior Engineer,60,250,15000,INV-2024-0456,Migration Planning
+TXN-003,2024-03-10,DataFlow Inc,Data Engineering,Senior Engineer,30,275,8250,INV-2024-0512,Data Pipeline Architecture
+TXN-004,2024-03-15,DataFlow Inc,Data Engineering,Senior Engineer,50,275,13750,INV-2024-0512,ETL Pipeline Development
+TXN-005,2024-03-20,NetSecure Solutions,Cybersecurity,Senior Analyst,20,280,5600,INV-2024-0601,Security Audit
+TXN-006,2024-04-01,Apex Consulting,Cloud Services,Junior Engineer,80,200,16000,INV-2024-0456,Data Migration Execution
+TXN-007,2024-04-05,CloudBase Partners,Infrastructure,DevOps Engineer,35,230,8050,INV-2024-0702,Infrastructure Setup
+TXN-008,2024-04-10,DataFlow Inc,Data Engineering,QA Engineer,25,225,5625,INV-2024-0512,Pipeline Testing
+TXN-009,2024-04-15,Apex Consulting,Cloud Services,Senior Engineer,40,250,10000,INV-2024-0456,Cloud Architecture Assessment
+TXN-010,2024-04-20,NetSecure Solutions,Cybersecurity,Penetration Tester,15,320,4800,INV-2024-0601,Penetration Test
+TXN-011,2024-05-01,DataFlow Inc,Data Engineering,Architect,10,310,3100,INV-2024-0812,Architecture Review
+TXN-012,2024-05-05,Apex Consulting,Cloud Services,Architect,5,950,4750,INV-2024-0899,Emergency Consultation

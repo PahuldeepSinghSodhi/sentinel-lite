@@ -1,0 +1,61 @@
+MASTER SERVICE AGREEMENT (MSA)
+Agreement Identifier: MSA-2023-089
+Effective Date: January 1, 2024
+
+This Master Service Agreement ("Agreement") is entered into as of January 1, 2024 ("Effective Date"), by and between TechCorp Industries, a Delaware corporation ("Client"), and approved vendor service providers ("Vendor").
+
+================================================================================
+SECTION 1: SCOPE OF SERVICES
+================================================================================
+Vendors shall provide IT consulting, cloud infrastructure, data engineering, cybersecurity, and managed software services as defined in individually executed Statements of Work ("SOWs"). Each SOW shall incorporate the terms and conditions of this Agreement.
+
+================================================================================
+SECTION 2: TERM AND RENEWAL
+================================================================================
+This Agreement is effective for an initial term of twelve (12) months starting on the Effective Date. The Agreement shall automatically renew for successive twelve (12) month periods unless either party provides written notice of non-renewal at least sixty (60) days prior to the expiration of the current term.
+
+================================================================================
+SECTION 3: PAYMENT TERMS & FEES
+================================================================================
+Client agrees to pay all undisputed vendor invoices within Net thirty (30) days from invoice receipt, unless explicitly specified otherwise in a governing SOW. Any overdue balances not subject to good-faith dispute shall accrue late payment interest at the rate of 1.5% per month or the maximum allowable legal rate, whichever is lower.
+
+================================================================================
+SECTION 4: RATE CARD COMPLIANCE & ADJUSTMENTS
+================================================================================
+All billing rates for services rendered under this Agreement must strictly comply with the rates specified in the Approved Master Rate Card (Appendix A). Any annual rate increase is strictly capped at a maximum of 3.0% per calendar year and requires ninety (90) days prior written notification to Client for review and written approval.
+
+================================================================================
+SECTION 5: SERVICE LEVEL AGREEMENTS (SLAs)
+================================================================================
+Vendor agrees to adhere to the following SLA standards for all managed services and support operations:
+  - Initial Response Time for Critical Issues (Priority 1): Within 4 hours.
+  - Target Resolution Time for Critical Issues (Priority 1): Within 24 hours.
+  - System Uptime Guarantee for Managed Infrastructure: 99.9% monthly uptime uptime commitment.
+  - Status Reporting: Vendor must submit detailed monthly operational status reports.
+
+================================================================================
+SECTION 6: INTELLECTUAL PROPERTY RIGHTS
+================================================================================
+All deliverables, custom code, software architectural designs, documentation, and work product created by Vendor under this Agreement shall constitute "works made for hire" and are the sole and exclusive property of TechCorp Industries upon creation.
+
+================================================================================
+SECTION 7: CONFIDENTIALITY & DATA SECURITY
+================================================================================
+Each party shall maintain the confidentiality of non-public proprietary information disclosed by the other party. Vendor agrees to strictly handle all Client data in compliance with TechCorp's corporate Data Classification and Protection Policy.
+
+================================================================================
+SECTION 8: TERMINATION
+================================================================================
+Either party may terminate this Agreement or any active SOW for convenience by providing thirty (30) days written notice. Either party may terminate immediately upon written notice if the other party commits a material breach that remains uncured after fifteen (15) days of notice.
+
+================================================================================
+SECTION 9: LIMITATION OF LIABILITY
+================================================================================
+Except for breaches of confidentiality or gross negligence, each party's total aggregate liability under this Agreement shall be capped at two times (2x) the total fees paid by Client under the applicable SOW in the preceding twelve (12) month period.
+
+================================================================================
+SECTION 10: DISPUTE RESOLUTION & GOVERNING LAW
+================================================================================
+In the event of a dispute, the parties shall first attempt resolution through good-faith negotiation between executive representatives. Unresolved disputes shall be settled via binding arbitration in San Francisco, CA in accordance with AAA commercial rules.
+
+IN WITNESS WHEREOF, the parties have executed this Master Service Agreement MSA-2023-089.

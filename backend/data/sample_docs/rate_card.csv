@@ -1,0 +1,12 @@
+vendor_name,service_category,role_level,hourly_rate,project_rate,effective_date,expiry_date
+Apex Consulting,Cloud Services,Senior Engineer,250,NA,2024-01-01,2024-12-31
+Apex Consulting,Cloud Services,Junior Engineer,150,NA,2024-01-01,2024-12-31
+Apex Consulting,Cloud Services,Architect,300,NA,2024-01-01,2024-12-31
+DataFlow Inc,Data Engineering,Senior Engineer,250,NA,2024-01-01,2024-12-31
+DataFlow Inc,Data Engineering,Junior Engineer,160,NA,2024-01-01,2024-12-31
+DataFlow Inc,Data Engineering,Architect,310,NA,2024-01-01,2024-12-31
+DataFlow Inc,Data Engineering,QA Engineer,200,NA,2024-01-01,2024-12-31
+NetSecure Solutions,Cybersecurity,Senior Analyst,280,NA,2024-01-01,2024-12-31
+NetSecure Solutions,Cybersecurity,Penetration Tester,320,NA,2024-01-01,2024-12-31
+CloudBase Partners,Infrastructure,DevOps Engineer,230,NA,2024-01-01,2024-12-31
+CloudBase Partners,Infrastructure,Site Reliability Engineer,260,NA,2024-01-01,2024-12-31
