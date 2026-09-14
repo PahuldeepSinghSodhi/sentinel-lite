@@ -104,7 +104,7 @@ def evaluate_rag(store, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
             print("         Falling back to retrieval-only evaluation.")
 
             # Fallback: test retrieval without LLM
-            query_embedding = embed_model.encode([query])
+            query_embedding = embed_model.embed_query(query)
             chunks = store.search(query_embedding, top_k=5)
 
             answer = ""
@@ -125,8 +125,8 @@ def evaluate_rag(store, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
         # compute cosine similarity. This is much more robust than keyword
         # matching because it captures meaning, not just exact words.
         if answer and reference_answer:
-            answer_vec = embed_model.encode([answer])[0]
-            reference_vec = embed_model.encode([reference_answer])[0]
+            answer_vec = embed_model.embed([answer])[0]
+            reference_vec = embed_model.embed([reference_answer])[0]
             similarity = cosine_similarity(answer_vec, reference_vec)
         else:
             similarity = 0.0
