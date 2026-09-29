@@ -26,6 +26,7 @@ desktop.ini
 
 # FAISS index (generated at runtime)
 backend/index_data/
+backend/data/cases/
 
 # Node modules
 frontend/node_modules/

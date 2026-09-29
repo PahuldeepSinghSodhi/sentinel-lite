@@ -1,34 +1,14 @@
-import React from 'react';
-
-const ConfidenceMeter = ({ score }) => {
-  // score between 0 and 1
-  const percentage = Math.round(score * 100);
-  
-  let color = 'var(--success-color)';
-  let text = 'High Confidence';
-  
-  if (score < 0.6) {
-    color = 'var(--error-color)';
-    text = 'Low Confidence';
-  } else if (score < 0.8) {
-    color = 'var(--warning-color)';
-    text = 'Medium Confidence';
-  }
-
+export default function ConfidenceMeter({ score }) {
+  const percentage = Math.round(
+    Math.max(0, Math.min(1, Number(score) || 0)) * 100,
+  );
   return (
-    <div className="meter-container">
-      <div className="meter-header">
-        <span>{text}</span>
-        <span>{percentage}%</span>
+    <div className="confidence">
+      <div>
+        <strong>Evidence confidence</strong>
+        <span>{percentage}% · heuristic estimate</span>
       </div>
-      <div className="meter-track">
-        <div 
-          className="meter-fill" 
-          style={{ width: `${percentage}%`, backgroundColor: color }}
-        />
-      </div>
+      <progress value={percentage} max="100" aria-label="Evidence confidence" />
     </div>
   );
-};
-
-export default ConfidenceMeter;
+}

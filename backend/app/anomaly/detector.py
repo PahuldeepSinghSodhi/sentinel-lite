@@ -96,6 +96,16 @@ def detect_anomalies(df: pd.DataFrame, reference_df: pd.DataFrame | None = None)
             
             # Merge to compare
             merged = df.merge(reference_df, on=["vendor_name", "role_level"], how="left")
+
+            # A transaction with no matching approved rate needs explicit review.
+            for idx, row in merged[merged["approved_rate"].isna()].iterrows():
+                anomalies.append({
+                    "type": "missing_rate",
+                    "severity": "high",
+                    "description": f"No approved rate found for {row['vendor_name']} / {row['role_level']}.",
+                    "details": {"vendor_name": row["vendor_name"], "role_level": row["role_level"]},
+                    "row_indices": [int(idx)]
+                })
             
             # Find where billed rate exceeds approved rate by > 5%
             # Check for NaN as well

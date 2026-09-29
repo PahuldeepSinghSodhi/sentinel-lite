@@ -37,7 +37,7 @@ def cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
     return float(dot / (norm_a * norm_b))
 
 
-def evaluate_rag(store, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
+def evaluate_rag(store, test_cases: List[Dict[str, Any]], retrieval_only: bool = False) -> Dict[str, Any]:
     """Evaluate the RAG pipeline using semantic similarity scoring.
 
     For each test case:
@@ -90,26 +90,33 @@ def evaluate_rag(store, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
         reference_answer = case.get("reference_answer", "")
         expected_terms = case.get("expected_terms", [])
 
-        try:
-            rag_result = query_rag(query, store)
-            answer = rag_result.get("answer", "")
-            retrieved_sources = [
-                src.get("source", "") for src in rag_result.get("sources", [])
-            ]
-            confidence_score = rag_result.get("confidence", {}).get(
-                "overall_confidence", 0.0
-            )
-        except Exception as e:
-            print(f"  [WARN] LLM query failed for '{query[:50]}...': {e}")
-            print("         Falling back to retrieval-only evaluation.")
-
-            # Fallback: test retrieval without LLM
+        if retrieval_only:
             query_embedding = embed_model.embed_query(query)
             chunks = store.search(query_embedding, top_k=5)
-
             answer = ""
             retrieved_sources = [c.get("source", "") for c in chunks]
             confidence_score = 0.0
+        else:
+            try:
+                rag_result = query_rag(query, store)
+                answer = rag_result.get("answer", "")
+                retrieved_sources = [
+                    src.get("source", "") for src in rag_result.get("sources", [])
+                ]
+                confidence_score = rag_result.get("confidence", {}).get(
+                    "overall_confidence", 0.0
+                )
+            except Exception as e:
+                print(f"  [WARN] LLM query failed for '{query[:50]}...': {e}")
+                print("         Falling back to retrieval-only evaluation.")
+
+                # Fallback: test retrieval without LLM
+                query_embedding = embed_model.embed_query(query)
+                chunks = store.search(query_embedding, top_k=5)
+
+                answer = ""
+                retrieved_sources = [c.get("source", "") for c in chunks]
+                confidence_score = 0.0
 
         # -- Metric 1: Retrieval Recall ------------------------------------
         found_sources = sum(
@@ -155,17 +162,17 @@ def evaluate_rag(store, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
             "answer_preview": answer[:120] + "..."
                 if len(answer) > 120 else answer,
             "recall": round(recall, 3),
-            "semantic_similarity": round(similarity, 3),
-            "keyword_accuracy": round(accuracy, 3),
-            "confidence": round(confidence_score, 3),
+            "semantic_similarity": None if retrieval_only else round(similarity, 3),
+            "keyword_accuracy": None if retrieval_only else round(accuracy, 3),
+            "confidence": None if retrieval_only else round(confidence_score, 3),
         })
 
     return {
         "total_cases": total_cases,
         "retrieval_recall": round(total_recall / total_cases, 3),
-        "semantic_similarity": round(total_similarity / total_cases, 3),
-        "grounding_accuracy": round(total_accuracy / total_cases, 3),
-        "avg_confidence": round(total_confidence / total_cases, 3),
+        "semantic_similarity": None if retrieval_only else round(total_similarity / total_cases, 3),
+        "grounding_accuracy": None if retrieval_only else round(total_accuracy / total_cases, 3),
+        "avg_confidence": None if retrieval_only else round(total_confidence / total_cases, 3),
         "per_case_results": per_case_results,
     }
 

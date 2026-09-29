@@ -101,7 +101,7 @@ def multi_doc_query(question: str, store: FAISSStore, top_k: int = TOP_K) -> dic
 
     for i, sub_q in enumerate(sub_questions):
         # Embed and search for each sub-question independently
-        embedding = model.encode([sub_q])
+        embedding = model.embed_query(sub_q)
         chunks = store.search(embedding, top_k=top_k)
         all_chunks.extend(chunks)
 
@@ -162,10 +162,17 @@ def multi_doc_query(question: str, store: FAISSStore, top_k: int = TOP_K) -> dic
     source_info = [
         {
             "source": c["source"],
+            "kind": c.get("kind"),
             "chunk_index": c["chunk_index"],
             "score": c["score"],
             "text_preview": c["text"][:200] + "..."
                 if len(c["text"]) > 200 else c["text"],
+            "location": c.get("location"),
+            "page": c.get("page"),
+            "line_start": c.get("line_start"),
+            "line_end": c.get("line_end"),
+            "row_number": c.get("row_number"),
+            "columns": c.get("columns"),
         }
         for c in unique_chunks[:10]  # Cap at 10 sources
     ]

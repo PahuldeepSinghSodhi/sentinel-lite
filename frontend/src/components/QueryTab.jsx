@@ -1,198 +1,86 @@
-import React, { useState } from 'react';
-import { Search, Loader2, Link2, FileText, Brain, Zap, ChevronDown, ChevronUp } from 'lucide-react';
-import ConfidenceMeter from './ConfidenceMeter';
+import { useRef, useState } from "react";
+import { ArrowRight, BookOpen, Check, Copy, Loader2, MessageSquareText, Sparkles } from "lucide-react";
+import { api } from "../api";
+import ConfidenceMeter from "./ConfidenceMeter";
+import EvidenceList from "./EvidenceList";
+import AnswerPresentation from "./AnswerPresentation";
 
-const QueryTab = () => {
-  const [question, setQuestion] = useState('');
+const suggestions = [
+  "How many duplicate groups are in the latest scan, and which vendors and CSV rows are involved?",
+  "Which vendors have rate violations, and where are the transaction and rate-card rows?",
+  "What is the approved hourly rate for [vendor] [role]?",
+  "What does the rate card say about [vendor]?",
+  "What payment terms are stated in the contract?",
+];
+
+export default function QueryTab({ review, onChange, onViewFiles }) {
+  const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const [deepReasoning, setDeepReasoning] = useState(false);
-  const [showChain, setShowChain] = useState(false);
-
-  const handleQuery = async (e) => {
-    e.preventDefault();
-    if (!question.trim()) return;
-
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState("");
+  const input = useRef(null);
+  async function ask(event) {
+    event.preventDefault();
+    if (!review?.ready || !question.trim() || loading) return;
     setLoading(true);
-    setError('');
-    setResult(null);
-    setShowChain(false);
-    
-    const endpoint = deepReasoning ? '/reason' : '/query';
-    
+    setError("");
     try {
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, top_k: 5 })
+      await api(`/cases/${review.id}/questions`, {
+        method: "POST", body: JSON.stringify({ question: question.trim(), top_k: 5 }),
       });
-      
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || `API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setResult(data);
+      setQuestion("");
+      await onChange();
     } catch (err) {
-      setError(err.message || 'An error occurred. Make sure the backend is running on port 8000.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  return (
-    <div className="query-container">
-      <div className="glass-card">
-        <form onSubmit={handleQuery} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="search-box">
-            <Search className="search-icon" size={24} />
-            <input 
-              type="text" 
-              className="search-input"
-              placeholder={deepReasoning 
-                ? "Ask a complex question that spans multiple documents..." 
-                : "Ask Sentinel any question about your documents..."}
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <button
-              type="button"
-              className={`btn-toggle ${deepReasoning ? 'active' : ''}`}
-              onClick={() => setDeepReasoning(!deepReasoning)}
-            >
-              {deepReasoning ? <Brain size={16} /> : <Zap size={16} />}
-              {deepReasoning ? 'Deep Reasoning (Multi-Doc)' : 'Quick Answer (Single Pass)'}
-            </button>
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              disabled={loading || !question.trim()}
-            >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
-              {loading && deepReasoning ? 'Reasoning...' : 'Ask Sentinel'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {error && (
-        <div className="glass-card" style={{ borderColor: 'var(--error-color)' }}>
-          <p style={{ color: 'var(--error-color)', margin: 0 }}>{error}</p>
-        </div>
-      )}
-
-      {result && (
-        <div className="glass-card answer-card" style={{ animation: 'slideUp 0.5s ease-out' }}>
-          <h2 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {result.reasoning_chain ? <Brain size={22} /> : <Zap size={22} />}
-            {result.reasoning_chain ? 'Multi-Doc Reasoning' : 'AI Response'}
-          </h2>
-          
-          {/* Reasoning chain (only for multi-doc) */}
-          {result.reasoning_chain && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <button 
-                className="btn-toggle" 
-                onClick={() => setShowChain(!showChain)}
-                style={{ marginBottom: '0.75rem' }}
-              >
-                {showChain ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {showChain ? 'Hide Reasoning Steps' : 'Show Reasoning Steps'}
-                <span className="chain-badge">{result.reasoning_chain.length} steps</span>
-              </button>
-              
-              {showChain && (
-                <div className="reasoning-chain">
-                  {result.reasoning_chain.map((step, i) => (
-                    <div key={i} className="chain-step">
-                      <div className="chain-step-header">
-                        <span className="chain-step-num">{i + 1}</span>
-                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
-                          {step.step.replace(/_/g, ' ')}
-                        </span>
-                      </div>
-                      <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                        {step.description}
-                      </p>
-                      {step.sub_questions && (
-                        <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                          {step.sub_questions.map((sq, j) => (
-                            <li key={j}>{sq}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {step.top_sources && (
-                        <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', color: 'var(--accent-indigo)' }}>
-                          Sources: {step.top_sources.join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="answer-content">
-            {result.answer}
-          </div>
-
-          {/* Confidence meter */}
-          {result.confidence && (
-            <div style={{ marginTop: '1.5rem' }}>
-              <ConfidenceMeter score={result.confidence.overall_confidence} />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginTop: '0.75rem' }}>
-                <div className="confidence-detail">
-                  <span className="confidence-label">Retrieval</span>
-                  <span className="confidence-value">{Math.round((result.confidence.retrieval_score || 0) * 100)}%</span>
-                </div>
-                <div className="confidence-detail">
-                  <span className="confidence-label">Source Agreement</span>
-                  <span className="confidence-value">{Math.round((result.confidence.source_agreement || 0) * 100)}%</span>
-                </div>
-                <div className="confidence-detail">
-                  <span className="confidence-label">Query Coverage</span>
-                  <span className="confidence-value">{Math.round((result.confidence.coverage_score || 0) * 100)}%</span>
-                </div>
-                <div className="confidence-detail">
-                  <span className="confidence-label">Grounding</span>
-                  <span className="confidence-value">{Math.round((result.confidence.answer_grounding || 0) * 100)}%</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {result.sources && result.sources.length > 0 && (
-            <div className="sources-section">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', marginBottom: '1rem' }}>
-                <Link2 size={18} /> Source Citations ({result.sources.length})
-              </h3>
-              
-              {result.sources.map((source, i) => (
-                <div key={i} className="source-card">
-                  <div className="source-header">
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <FileText size={14} />
-                      {source.source || `Document ${i+1}`}
-                      {source.chunk_index !== undefined && <span style={{ opacity: 0.6 }}> (chunk {source.chunk_index})</span>}
-                    </span>
-                    <span>Relevance: {Math.round((source.score || 0) * 100)}%</span>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.5rem 0 0', fontStyle: 'italic', lineHeight: '1.5' }}>
-                    "{source.text_preview || source.text || 'No preview available'}"
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default QueryTab;
+  }
+  async function copyAnswer(item) {
+    try {
+      await navigator.clipboard.writeText(item.answer);
+      setCopied(item.id);
+    } catch {
+      setError("Copy is unavailable in this browser. Select the answer to copy it.");
+    }
+  }
+  if (!review?.ready) return <section className="panel gated-panel"><BookOpen size={35} />
+    <h2>Prepare your sources first.</h2><p>Upload transactions and an approved rate card, then start the review to ask questions.</p>
+    <button className="button secondary" onClick={onViewFiles}>Open source files</button></section>;
+  const history = [...review.questions].reverse();
+  return <div className="query-layout"><div className="query-main">
+    <section className="panel composer"><div className="panel-heading"><span className="icon-label">
+      <MessageSquareText size={19} /> Ask across your case</span>
+      <span className="subtle-label">Uploaded files + latest anomaly scan</span></div>
+      <form onSubmit={ask}><label className="sr-only" htmlFor="question">Your document question</label>
+        <textarea ref={input} id="question" value={question} onChange={(event) => setQuestion(event.target.value)}
+          placeholder="What would you like to know?" rows={4} disabled={loading}
+          onKeyDown={(event) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) ask(event); }} />
+        <div className="composer-actions"><span><BookOpen size={15} /> Uses this case’s files and saved scan findings</span>
+          <button className="button primary" disabled={loading || !question.trim()}>
+            {loading ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
+            {loading ? "Finding an answer…" : "Ask Sentinel"}<ArrowRight size={16} /></button></div>
+      </form></section>
+    {error && <div className="notice error" role="alert">{error}</div>}
+    {!history.length && <section className="suggestions"><div className="section-label"><span>A PLACE TO START</span><span>Try a question</span></div>
+      <div className="suggestion-grid">{suggestions.filter((item) => review.files.contract || !item.includes("contract"))
+        .map((item) => <button className="suggestion" key={item} onClick={() => { setQuestion(item); input.current?.focus(); }}>
+          <small>CASE QUESTION</small><p>{item}</p><ArrowRight size={17} /></button>)}</div></section>}
+    {history.map((item) => <section className="panel answer-panel" aria-label="Saved answer" key={item.id}>
+      <div className="panel-heading"><span className="icon-label">
+        {item.presentation?.kind === "scan" ? <BookOpen size={19} /> : <Sparkles size={19} />}
+        {item.presentation?.kind === "scan" ? "Scan-backed answer" : "Document answer"}</span>
+        <button className="button ghost small-button" onClick={() => copyAnswer(item)}>
+          {copied === item.id ? <Check size={15} /> : <Copy size={15} />}{copied === item.id ? "Copied" : "Copy"}</button></div>
+      <p className="answered-question">{item.question}</p><AnswerPresentation item={item} />
+      {item.confidence?.basis === "latest_scan" && !item.presentation && <p className="answer-basis">Based on the latest scan at the time of this question: {new Date(item.confidence.scan_created_at).toLocaleString()}. Counts come from saved findings, not AI estimates.</p>}
+      {item.confidence?.overall_confidence !== undefined && <ConfidenceMeter score={item.confidence.overall_confidence} />}
+      <EvidenceList caseId={review.id} items={item.sources} title="Source rows and passages to inspect" />
+      <p className="answer-timestamp">Asked {new Date(item.created_at).toLocaleString()}</p>
+    </section>)}
+  </div><aside className="context-rail"><div className="context-card"><span className="rail-icon"><BookOpen size={23} /></span>
+    <p className="eyebrow">A LITTLE CONTEXT</p><h2>Answers with inspectable sources.</h2>
+    <p>Ask about a saved scan or a document. Open the evidence beneath an answer to inspect CSV rows, TXT lines, or PDF pages. Run a scan first for anomaly counts.</p>
+    <button className="text-button" onClick={onViewFiles}>Explore case files <ArrowRight size={16} /></button>
+  </div></aside></div>;
+}

@@ -12,9 +12,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+COPY data/ ./data/
 
 # Create necessary directories
-RUN mkdir -p data/index data/sample_docs
+RUN mkdir -p data/sample_docs index_data
 
 EXPOSE 8000
 

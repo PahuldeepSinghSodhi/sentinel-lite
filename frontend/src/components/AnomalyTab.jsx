@@ -1,208 +1,146 @@
-import React, { useState } from 'react';
-import { ShieldAlert, Activity, AlertTriangle, AlertCircle, Loader2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { useState } from "react";
+import { ArrowRight, CheckCheck, FileSearch, Loader2, Play, ShieldAlert, Sparkles } from "lucide-react";
+import { api } from "../api";
+import EvidenceList from "./EvidenceList";
 
-const AnomalyTab = () => {
-  const [scanning, setScanning] = useState(false);
-  const [results, setResults] = useState(null);
-  const [error, setError] = useState(null);
-  const [expandedCards, setExpandedCards] = useState({});
-  const [explanations, setExplanations] = useState({});
-  const [explaining, setExplaining] = useState({});
+const labels = { duplicate: "Possible duplicate", outlier_zscore: "Statistical outlier",
+  outlier_iqr: "Outside expected range", rate_violation: "Rate discrepancy",
+  missing_rate: "No approved rate" };
+const decisions = [
+  ["", "Choose a decision"], ["investigate", "Investigate"],
+  ["approved_exception", "Approved exception"], ["false_alarm", "False alarm"],
+];
 
-  const handleScan = async () => {
-    setScanning(true);
-    setError(null);
-    setExplanations({});
+function FindingCard({ finding, review, onChange, ordinal }) {
+  const [decision, setDecision] = useState(finding.decision || "");
+  const [note, setNote] = useState(finding.note || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [explanation, setExplanation] = useState("");
+  const [explaining, setExplaining] = useState(false);
+  async function save() {
+    setSaving(true);
+    setError("");
     try {
-      const response = await fetch('http://localhost:8000/anomalies', {
-        method: 'POST',
+      await api(`/cases/${review.id}/findings/${finding.id}`, {
+        method: "PATCH", body: JSON.stringify({ decision, note }),
       });
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
-      const data = await response.json();
-      setResults(data);
+      await onChange();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function explain() {
+    setExplaining(true);
+    setError("");
+    try {
+      const result = await api("/explain_anomaly", {
+        method: "POST",
+        body: JSON.stringify({ type: finding.type, severity: finding.severity,
+          description: finding.description, details: finding.details, row_indices: finding.row_indices }),
+      });
+      setExplanation(result.explanation);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExplaining(false);
+    }
+  }
+  return <article className="finding">
+    <div className="finding-top"><span className={`severity ${finding.severity}`}>{finding.severity}</span>
+      <h3>{labels[finding.type] || finding.type}</h3><span className="finding-id">#{ordinal}</span></div>
+    <p>{finding.description}</p>
+    <div className="finding-rule"><strong>Rule</strong> {finding.rule}<br /><strong>Calculation</strong> {finding.calculation}</div>
+    <EvidenceList caseId={review.id} items={finding.evidence} />
+    <div className="decision-form">
+      <label>Reviewer decision
+        <select value={decision} onChange={(event) => setDecision(event.target.value)}>
+          {decisions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+        </select>
+      </label>
+      <label>Note {decision === "approved_exception" ? "(required)" : "(optional)"}
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2}
+          placeholder="Explain your review decision" /></label>
+      <button className="button primary" disabled={!decision || saving || (decision === "approved_exception" && !note.trim())}
+        onClick={save}>{saving ? <Loader2 className="spin" size={15} /> : <CheckCheck size={15} />}
+        {saving ? "Saving…" : finding.decision ? "Update decision" : "Save decision"}</button>
+    </div>
+    {finding.decided_at && <small className="saved-decision">Saved {new Date(finding.decided_at).toLocaleString()}</small>}
+    <button className="text-button explain-button" disabled={explaining} onClick={explain}>
+      {explaining ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
+      {explaining ? "Preparing explanation…" : "Explain this finding"}<ArrowRight size={14} />
+    </button>
+    {explanation && <div className="explanation"><strong><Sparkles size={15} /> AI explanation</strong>
+      <p>{explanation}</p></div>}
+    {error && <div className="notice error" role="alert">{error}</div>}
+  </article>;
+}
+
+export default function AnomalyTab({ review, onChange, onViewFiles }) {
+  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("all");
+  async function scan() {
+    setScanning(true);
+    setError("");
+    try {
+      await api(`/cases/${review.id}/scans`, { method: "POST" });
+      await onChange();
     } catch (err) {
       setError(err.message);
     } finally {
       setScanning(false);
     }
-  };
-
-  const handleExplain = async (idx, anomaly) => {
-    setExplaining(prev => ({ ...prev, [idx]: true }));
-    try {
-      const response = await fetch('http://localhost:8000/explain_anomaly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: anomaly.type,
-          severity: anomaly.severity,
-          description: anomaly.description,
-          details: anomaly.details || {},
-          row_indices: anomaly.row_indices || [],
-        }),
-      });
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
-      const data = await response.json();
-      setExplanations(prev => ({ ...prev, [idx]: data }));
-      // Auto-expand the card when explanation arrives
-      setExpandedCards(prev => ({ ...prev, [idx]: true }));
-    } catch (err) {
-      setExplanations(prev => ({
-        ...prev,
-        [idx]: { status: 'error', explanation: `Failed to get explanation: ${err.message}` },
-      }));
-    } finally {
-      setExplaining(prev => ({ ...prev, [idx]: false }));
-    }
-  };
-
-  const toggleExpanded = (idx) => {
-    setExpandedCards(prev => ({ ...prev, [idx]: !prev[idx] }));
-  };
-
-  const getSeverityIcon = (severity) => {
-    switch(severity) {
-      case 'high': return <AlertCircle size={20} color="var(--error-color)" />;
-      case 'medium': return <AlertTriangle size={20} color="var(--warning-color)" />;
-      case 'low': return <Activity size={20} color="var(--success-color)" />;
-      default: return null;
-    }
-  };
-
-  const getTypeBadge = (type) => {
-    const labels = {
-      'duplicate': 'Duplicate',
-      'outlier_zscore': 'Z-Score Outlier',
-      'outlier_iqr': 'IQR Outlier',
-      'rate_violation': 'Rate Violation',
-    };
-    return labels[type] || type;
-  };
-
-  const renderExplanation = (text) => {
-    // Parse the bold markdown (**text**) into React elements
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} style={{ color: 'var(--accent-cyan)' }}>{part.slice(2, -2)}</strong>;
-      }
-      return <span key={i}>{part}</span>;
-    });
-  };
-
-  return (
-    <div className="glass-card">
-      <div className="anomalies-header">
-        <div>
-          <h2 style={{ margin: '0 0 0.5rem 0', color: 'white' }}>Anomaly Scanner</h2>
-          <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Detect duplicates, outliers, and rate violations in transaction data.</p>
-        </div>
-        <button className="btn-primary" onClick={handleScan} disabled={scanning}>
-          {scanning ? <Loader2 className="animate-spin" size={20} /> : <ShieldAlert size={20} />}
-          {scanning ? 'Scanning...' : 'Scan for Anomalies'}
-        </button>
-      </div>
-
-      {error && (
-        <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '0.5rem', color: 'var(--error-color)', marginTop: '1rem' }}>
-          Error: {error}. Make sure the backend is running on port 8000.
-        </div>
-      )}
-
-      {results && (
-        <div style={{ animation: 'slideUp 0.5s ease-out' }}>
-          <div className="stats-container">
-            <div className="glass-card stat-card">
-              <div style={{ color: 'var(--text-secondary)' }}>Total Anomalies</div>
-              <div className="stat-value">{results.total_anomalies}</div>
-            </div>
-            <div className="glass-card stat-card">
-              <div style={{ color: 'var(--text-secondary)' }}>High Severity</div>
-              <div className="stat-value high">{results.severity_summary?.high || 0}</div>
-            </div>
-            <div className="glass-card stat-card">
-              <div style={{ color: 'var(--text-secondary)' }}>Medium Severity</div>
-              <div className="stat-value medium">{results.severity_summary?.medium || 0}</div>
-            </div>
-            <div className="glass-card stat-card">
-              <div style={{ color: 'var(--text-secondary)' }}>Transactions Analyzed</div>
-              <div className="stat-value">{results.transactions_analyzed}</div>
-            </div>
-          </div>
-
-          <div className="anomaly-list">
-            {results.anomalies?.map((anomaly, idx) => (
-              <div key={idx} className={`glass-card anomaly-item ${anomaly.severity}`}>
-                <div className="anomaly-header" onClick={() => toggleExpanded(idx)} style={{ cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    {getSeverityIcon(anomaly.severity)}
-                    <span style={{ fontSize: '1.1rem', fontWeight: '600' }}>{getTypeBadge(anomaly.type)}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span className={`badge ${anomaly.severity}`}>{anomaly.severity}</span>
-                    {expandedCards[idx] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </div>
-                </div>
-                <p style={{ margin: '0.5rem 0', color: 'var(--text-secondary)' }}>{anomaly.description}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                    <strong>Affected Rows:</strong> {anomaly.row_indices?.join(', ')}
-                  </div>
-                  {!explanations[idx] && (
-                    <button
-                      className="btn-explain"
-                      onClick={(e) => { e.stopPropagation(); handleExplain(idx, anomaly); }}
-                      disabled={explaining[idx]}
-                    >
-                      {explaining[idx] ? (
-                        <><Loader2 className="animate-spin" size={14} /> Analyzing...</>
-                      ) : (
-                        <><Sparkles size={14} /> Ask AI to Explain</>
-                      )}
-                    </button>
-                  )}
-                </div>
-                
-                {expandedCards[idx] && anomaly.details && !explanations[idx] && (
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', fontSize: '0.85rem' }}>
-                    <strong style={{ color: 'var(--text-secondary)' }}>Raw Details:</strong>
-                    <pre style={{ margin: '0.5rem 0 0', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-                      {JSON.stringify(anomaly.details, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
-                {explanations[idx] && (
-                  <div className="explanation-card" style={{ animation: 'slideUp 0.3s ease-out' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                      <Sparkles size={16} color="var(--accent-cyan)" />
-                      <strong style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem' }}>AI Explanation</strong>
-                    </div>
-                    {explanations[idx].status === 'error' ? (
-                      <p style={{ color: 'var(--error-color)', margin: 0, fontSize: '0.875rem' }}>
-                        {explanations[idx].explanation}
-                      </p>
-                    ) : (
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
-                        {renderExplanation(explanations[idx].explanation)}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {!results && !scanning && !error && (
-        <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-secondary)' }}>
-          <ShieldAlert size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
-          <p>Click "Scan for Anomalies" to analyze transaction data for duplicates, outliers, and rate violations.</p>
-        </div>
-      )}
+  }
+  if (!review?.ready) return <section className="panel gated-panel"><ShieldAlert size={35} />
+    <h2>Files first, findings next.</h2><p>Upload transactions and an approved rate card, then start the review.</p>
+    <button className="button secondary" onClick={onViewFiles}>Open source files</button></section>;
+  const scans = [...review.scans].reverse();
+  const latest = scans[0];
+  const total = scans.reduce((count, item) => count + item.findings.length, 0);
+  function jumpTo(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  const metrics = latest ? [
+    { label: "Transactions reviewed", value: latest.transactions_analyzed, hint: "View source files", action: onViewFiles },
+    { label: "Findings this scan", value: latest.findings.length, hint: "View latest scan", action: () => jumpTo(`scan-${latest.id}`) },
+    { label: "Total findings", value: total, hint: "View review history", action: () => jumpTo("review-history") },
+    { label: "Scans", value: scans.length, hint: "View scan history", action: () => jumpTo("review-history") },
+  ] : [];
+  return <div className="anomaly-layout">
+    <section className="panel scan-bar"><div className="scan-title"><span className="shortcut-icon"><ShieldAlert size={23} /></span>
+      <div><h2>Transaction review</h2><p>Scan this case’s uploaded transactions against its approved rates.</p></div></div>
+      <button className="button primary" disabled={scanning} onClick={scan}>
+        {scanning ? <Loader2 className="spin" size={16} /> : <Play size={15} />}
+        {scanning ? "Scanning…" : latest ? "Run another scan" : "Run scan"}</button></section>
+    {error && <div className="notice error" role="alert">{error}</div>}
+    {!latest && <section className="panel scan-empty"><div className="empty-illustration"><div /><span><FileSearch size={38} /></span></div>
+      <p className="eyebrow">READY TO REVIEW</p><h2>Know where to look first.</h2>
+      <p>Run a scan to identify duplicates, unusual values, and rate discrepancies.</p></section>}
+    {latest && <><div className="metric-grid">
+      {metrics.map(({ label, value, hint, action }) =>
+        <button type="button" className="panel metric metric-link" key={label} onClick={action}
+          aria-label={`${label}: ${value}. ${hint}`}>
+          <span>{label}</span><strong>{value}</strong><small>{hint} <ArrowRight size={12} /></small></button>)}
     </div>
-  );
-};
-
-export default AnomalyTab;
+      <section className="panel findings-panel" id="review-history"><div className="findings-toolbar"><h2>Review history <span className="count-pill">{total}</span></h2>
+        <div className="filter-group" aria-label="Filter findings by severity">
+          {["all", "high", "medium", "low"].map((value) =>
+            <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}
+              aria-pressed={filter === value}>{value === "all" ? "All findings" : value}</button>)}
+        </div></div>
+        {scans.map((item, scanIndex) => {
+          const visible = item.findings.filter((finding) => filter === "all" || finding.severity === filter);
+          return <div className="scan-group" id={`scan-${item.id}`} key={item.id}>
+            <div className="scan-group-heading"><strong>Scan {scans.length - scanIndex}</strong>
+              <span>{new Date(item.created_at).toLocaleString()} · {item.transactions_analyzed} transactions · {item.duration_ms} ms</span></div>
+            {visible.length ? visible.map((finding, index) => <FindingCard key={finding.id} finding={finding}
+              review={review} onChange={onChange} ordinal={index + 1} />)
+              : <div className="empty-filter"><CheckCheck size={25} /><p>{item.findings.length ? "No findings match this filter." : "No findings in this scan."}</p></div>}
+          </div>;
+        })}
+      </section><p className="review-note">Findings are signals for human review. Confirm any approved exceptions before taking action.</p></>}
+  </div>;
+}

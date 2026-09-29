@@ -9,3 +9,5 @@ sentence-transformers
 requests
 PyPDF2
 python-multipart
+reportlab
+httpx

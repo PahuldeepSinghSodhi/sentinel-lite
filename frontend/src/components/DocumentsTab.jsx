@@ -1,113 +1,94 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { useState } from "react";
+import { CheckCircle2, FileText, Loader2, Plus, Table2, UploadCloud } from "lucide-react";
+import { api, uploadFile } from "../api";
 
-// Mock data to show if backend returns nothing or for UI structure
-const MOCK_DOCS = [
-  { id: 'q3_financial_report.pdf', chunks: 124, last_updated: '2 hours ago', status: 'healthy' },
-  { id: 'user_privacy_policy_v2.md', chunks: 45, last_updated: '1 day ago', status: 'healthy' },
-  { id: 'system_architecture_diagram.json', chunks: 12, last_updated: '3 days ago', status: 'unhealthy' },
+const slots = [
+  { kind: "transactions", title: "Transactions", description: "The charges you want to review.",
+    format: "CSV · required", accept: ".csv", icon: Table2 },
+  { kind: "contract", title: "Vendor contract", description: "Optional agreement for document questions.",
+    format: "Text-based PDF or TXT · optional", accept: ".pdf,.txt", icon: FileText },
+  { kind: "rate_card", title: "Approved rate card", description: "The rates used to check vendor charges.",
+    format: "CSV · required", accept: ".csv", icon: Table2 },
 ];
 
-const DocumentsTab = () => {
-  const [ingesting, setIngesting] = useState(false);
-  const [message, setMessage] = useState('');
-  const [docs, setDocs] = useState(MOCK_DOCS);
-  
-  // Real implementation would fetch /docs from backend if available
-
-  const handleReingest = async () => {
-    setIngesting(true);
-    setMessage('');
-    
+export default function DocumentsTab({ review, onChange, onStart, onNewCase, busy }) {
+  const [uploading, setUploading] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
+  async function handleFile(kind, file) {
+    if (!file || !review) return;
+    setUploading(kind);
+    setError("");
     try {
-      const response = await fetch('http://localhost:8000/ingest', {
-        method: 'POST'
-      });
-      
-      if (!response.ok) throw new Error('Ingestion failed');
-      
-      const data = await response.json();
-      setMessage(`Successfully re-indexed documents: ${data.message || 'Complete'}`);
-      
-      // Update mock data to simulate freshness
-      setDocs(docs.map(d => ({ ...d, last_updated: 'Just now', status: 'healthy' })));
+      await uploadFile(review.id, kind, file);
+      await onChange();
     } catch (err) {
-      setMessage('Using mock ingestion (Backend unreachable). Data re-indexed locally.');
-      setTimeout(() => {
-        setDocs(docs.map(d => ({ ...d, last_updated: 'Just now', status: 'healthy' })));
-      }, 1000);
+      setError(err.message);
     } finally {
-      setIngesting(false);
+      setUploading("");
     }
-  };
-
+  }
+  async function startReview() {
+    setStarting(true);
+    setError("");
+    try {
+      await api(`/cases/${review.id}/start`, { method: "POST" });
+      await onChange();
+      onStart();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStarting(false);
+    }
+  }
+  if (!review) return (
+    <section className="panel gated-panel"><UploadCloud size={35} /><h2>Create a review case</h2>
+      <p>Create a case to upload your own transactions and approved rate card, or Try sample to explore the demo.</p>
+      <button className="button primary" onClick={onNewCase} disabled={busy}><Plus size={16} /> Add your files</button></section>
+  );
   return (
-    <div className="glass-card">
-      <div className="anomalies-header">
-        <div>
-          <h2 style={{ margin: '0 0 0.5rem 0', color: 'white' }}>Vector Database Documents</h2>
-          <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Manage and re-index the data sources powering Sentinel.</p>
+    <div className="documents-layout">
+      <section className="panel upload-panel">
+        <div className="library-header"><div><p className="eyebrow">CASE FILES</p><h2>{review.ready ? "Source files" : "Add your files"}</h2>
+          <p>{review.ready ? "These are the files used for this review." : "Choose your own files below. Each review keeps its files and history separate."}</p></div>
+          {review.ready && <button className="button primary" onClick={onNewCase} disabled={busy}>
+            <Plus size={15} /> Add your own files</button>}</div>
+        {review.ready && <div className="upload-locked-note"><strong>Need to upload different files?</strong>
+          <span>This review’s evidence is locked after Start review. Create a new case to add your own files; this case remains available in the case selector.</span></div>}
+        {error && <div className="notice error" role="alert">{error}</div>}
+        <div className="upload-grid">
+          {slots.map(({ kind, title, description, format, accept, icon: Icon }) => {
+            const file = review.files[kind];
+            return <section className={`upload-slot ${file ? "filled" : ""}`} key={kind}>
+              <span className="upload-icon"><Icon size={22} /></span>
+              <div className="upload-slot-copy"><h3>{title}</h3><p>{description}</p><small>{format}</small></div>
+              {file ? <div className="uploaded-file"><CheckCircle2 size={17} />
+                <span><strong>{file.filename}</strong><small>{Math.max(1, Math.round(file.size / 1024))} KB uploaded</small></span></div>
+                : <div className="upload-placeholder">No file uploaded</div>}
+              {review.status === "draft" && <label className={`button secondary upload-action ${uploading || starting ? "disabled" : ""}`}>
+                {uploading === kind ? <Loader2 className="spin" size={15} /> : <UploadCloud size={15} />}
+                {uploading === kind ? "Uploading…" : file ? "Replace file" : `Add ${title.toLowerCase()}`}
+                <input type="file" accept={accept} disabled={Boolean(uploading) || starting}
+                  onChange={(event) => { handleFile(kind, event.target.files?.[0]); event.target.value = ""; }} />
+              </label>}
+            </section>;
+          })}
         </div>
-        <button className="btn-primary" onClick={handleReingest} disabled={ingesting}>
-          {ingesting ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
-          Re-ingest Documents
-        </button>
-      </div>
-
-      {message && (
-        <div style={{ 
-          padding: '1rem', 
-          backgroundColor: 'rgba(34, 197, 94, 0.1)', 
-          border: '1px solid var(--success-color)',
-          borderRadius: '0.5rem',
-          color: 'var(--success-color)',
-          marginBottom: '1.5rem',
-          animation: 'slideUp 0.3s ease-out'
-        }}>
-          {message}
+        <div className="upload-footer">
+          <div><strong>{review.ready ? "Review active" : review.can_start ? "Ready to start" : "Two files required"}</strong>
+            <p>{review.ready ? "Files are locked so past findings keep their original evidence. Create a new case for new files."
+              : "Transactions and approved rate card are required before scanning or asking questions."}</p></div>
+          {review.status === "draft" && <button className="button primary" disabled={!review.can_start || Boolean(uploading) || starting}
+            onClick={startReview}>{starting ? <Loader2 className="spin" size={16} /> : <CheckCircle2 size={16} />}
+            {starting ? "Indexing files…" : "Start review"}</button>}
         </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {docs.map((doc, idx) => (
-          <div key={idx} style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '1.25rem',
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            borderRadius: '0.75rem',
-            border: '1px solid var(--border-color)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ 
-                width: '40px', height: '40px', 
-                borderRadius: '8px', 
-                backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <FileText color="var(--accent-indigo)" size={20} />
-              </div>
-              <div>
-                <div style={{ fontWeight: '500', color: 'white', marginBottom: '0.25rem' }}>{doc.id}</div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  {doc.chunks} vectors • Updated {doc.last_updated}
-                </div>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {doc.status === 'healthy' ? (
-                <><CheckCircle2 size={18} color="var(--success-color)" /> <span style={{ color: 'var(--success-color)', fontSize: '0.875rem' }}>Healthy</span></>
-              ) : (
-                <><XCircle size={18} color="var(--error-color)" /> <span style={{ color: 'var(--error-color)', fontSize: '0.875rem' }}>Needs Sync</span></>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      </section>
+      <aside className="context-rail"><div className="context-card"><span className="rail-icon"><FileText size={23} /></span>
+        <p className="eyebrow">SOURCE LOCATIONS</p><h2>Evidence you can inspect.</h2>
+        <p>Findings and answers identify the original CSV row, TXT lines, or PDF page.</p>
+        <div className="context-divider" /><strong>PDF support</strong>
+        <p>PDFs must contain selectable text. Scanned images need OCR and are not supported in this version.</p>
+      </div></aside>
     </div>
   );
-};
-
-export default DocumentsTab;
+}

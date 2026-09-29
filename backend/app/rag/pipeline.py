@@ -5,7 +5,7 @@ question, it:
 1. Embeds the query using the shared embedding model (Milestone 1)
 2. Retrieves the top-k most relevant chunks from the FAISS index (Milestone 1)
 3. Constructs a grounded prompt with the retrieved context
-4. Sends it to Gemini for answer generation
+4. Sends it to the locally configured Ollama model for answer generation
 5. Returns the answer along with the source chunks used
 
 The key idea behind RAG: instead of relying on the LLM's training data
@@ -60,7 +60,8 @@ def build_context_string(chunks: list[dict]) -> str:
     context_parts = []
     for i, chunk in enumerate(chunks, 1):
         context_parts.append(
-            f"--- Passage {i} (Source: {chunk['source']}, "
+            f"--- Passage {i} (Source: {chunk['source']}"
+            f"{', ' + chunk['location'] if chunk.get('location') else ''}, "
             f"Relevance: {chunk['score']:.2f}) ---\n"
             f"{chunk['text']}"
         )
@@ -75,7 +76,7 @@ def query_rag(
     """Run the full RAG pipeline: retrieve context, then generate an answer.
     
     This is the main entry point for Q&A. It coordinates the embedding
-    model, FAISS store, and Gemini client to produce a grounded answer.
+    model, FAISS store, and Ollama client to produce a source-guided answer.
     
     Args:
         question: The user's natural-language question.
@@ -90,7 +91,7 @@ def query_rag(
             
     Raises:
         ValueError: If the question is empty.
-        RuntimeError: If the Gemini API call fails.
+        RuntimeError: If the Ollama call fails.
     """
     if not question or not question.strip():
         raise ValueError("Question cannot be empty.")
@@ -126,10 +127,17 @@ def query_rag(
     source_info = [
         {
             "source": chunk["source"],
+            "kind": chunk.get("kind"),
             "chunk_index": chunk["chunk_index"],
             "score": chunk["score"],
             "text_preview": chunk["text"][:200] + "..."
                 if len(chunk["text"]) > 200 else chunk["text"],
+            "location": chunk.get("location"),
+            "page": chunk.get("page"),
+            "line_start": chunk.get("line_start"),
+            "line_end": chunk.get("line_end"),
+            "row_number": chunk.get("row_number"),
+            "columns": chunk.get("columns"),
         }
         for chunk in chunks
     ]

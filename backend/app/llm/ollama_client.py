@@ -1,8 +1,8 @@
 """Ollama LLM client -- singleton wrapper for local Ollama API.
 
 This module provides a reusable, singleton Ollama client to communicate
-with a local Ollama instance. This replaces the cloud-based Gemini API,
-ensuring 100% privacy and zero usage costs.
+with a local Ollama instance. Uploaded case data is sent only to the
+configured Ollama endpoint during generation.
 """
 import requests
 import json

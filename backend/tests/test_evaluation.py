@@ -199,27 +199,35 @@ def main():
     print(f"\n[2/3] Running RAG evaluation ({len(RAG_TEST_CASES)} questions)...")
     print("-" * 70)
 
-    rag_metrics = evaluate_rag(store, RAG_TEST_CASES)
+    is_ci = os.environ.get("CI") == "true"
+    rag_metrics = evaluate_rag(store, RAG_TEST_CASES, retrieval_only=is_ci)
 
     for i, result in enumerate(rag_metrics["per_case_results"], 1):
-        sim_pct = result["semantic_similarity"] * 100
-        status = "PASS" if sim_pct >= 50 else "FAIL"
-        print(f"  Q{i:02d} [{status}] Similarity: {sim_pct:5.1f}% | "
-              f"Recall: {result['recall']:.0%} | "
-              f"Query: {result['query'][:50]}...")
+        if is_ci:
+            print(f"  Q{i:02d} [RETRIEVAL] Recall: {result['recall']:.0%} | Query: {result['query'][:50]}...")
+        else:
+            sim_pct = result["semantic_similarity"] * 100
+            status = "PASS" if sim_pct >= 50 else "FAIL"
+            print(f"  Q{i:02d} [{status}] Similarity: {sim_pct:5.1f}% | "
+                  f"Recall: {result['recall']:.0%} | "
+                  f"Query: {result['query'][:50]}...")
 
     print("-" * 70)
     print(f"\n  RAG RESULTS:")
     print(f"    Retrieval Recall:      {rag_metrics['retrieval_recall']:.1%}")
-    print(f"    Semantic Similarity:   {rag_metrics['semantic_similarity']:.1%}")
-    print(f"    Keyword Grounding:     {rag_metrics['grounding_accuracy']:.1%}")
-    print(f"    Avg Confidence:        {rag_metrics['avg_confidence']:.1%}")
+    if not is_ci:
+        print(f"    Semantic Similarity:   {rag_metrics['semantic_similarity']:.1%}")
+        print(f"    Keyword Grounding:     {rag_metrics['grounding_accuracy']:.1%}")
+        print(f"    Avg Confidence:        {rag_metrics['avg_confidence']:.1%}")
+    else:
+        print("    Answer metrics:        not run (Ollama unavailable in CI)")
 
     passed = sum(
         1 for r in rag_metrics["per_case_results"]
-        if r["semantic_similarity"] >= 0.5
+        if r["semantic_similarity"] is not None and r["semantic_similarity"] >= 0.5
     )
-    print(f"    Questions Passed:      {passed}/{rag_metrics['total_cases']}")
+    if not is_ci:
+        print(f"    Questions Passed:      {passed}/{rag_metrics['total_cases']}")
 
     # -- Anomaly Detection Evaluation --------------------------------------
     print(f"\n[3/3] Running anomaly detection evaluation...")
@@ -245,20 +253,22 @@ def main():
     print("\n" + "=" * 70)
     print("  EVALUATION SUMMARY")
     print("=" * 70)
-    print(f"  RAG: {passed}/{rag_metrics['total_cases']} questions passed "
-          f"(>= 50% semantic similarity)")
+    if is_ci:
+        print(f"  RAG retrieval: {rag_metrics['retrieval_recall']:.1%} across {rag_metrics['total_cases']} questions")
+    else:
+        print(f"  RAG: {passed}/{rag_metrics['total_cases']} questions passed "
+              f"(>= 50% semantic similarity)")
     print(f"  Anomaly Detection: F1 = {anomaly_metrics['f1_score']:.1%}")
 
     # Exit with non-zero if too many RAG questions fail (for CI)
     # In GitHub Actions (CI=true), Ollama isn't available, so we only check retrieval recall.
-    is_ci = os.environ.get("CI") == "true"
-    
     if is_ci:
-        if rag_metrics['retrieval_recall'] < 0.8:
-            print(f"\n  [FAIL] Retrieval recall too low ({rag_metrics['retrieval_recall']:.1%})")
+        if rag_metrics['retrieval_recall'] < 0.8 or anomaly_metrics['precision'] < 0.7 or \
+           anomaly_metrics['recall'] < 0.9 or anomaly_metrics['f1_score'] < 0.8:
+            print("\n  [FAIL] Retrieval or anomaly quality below CI thresholds")
             sys.exit(1)
         else:
-            print("\n  [PASS] CI Evaluation complete (retrieval-only).")
+            print("\n  [PASS] CI retrieval and anomaly evaluation complete.")
     else:
         if passed < 10:  # At least half should pass when LLM is available
             print("\n  [FAIL] Too many RAG questions failed.")

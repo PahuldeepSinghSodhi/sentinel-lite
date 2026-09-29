@@ -27,6 +27,7 @@ from app.anomaly.detector import detect_anomalies
 from app.anomaly.router import classify_query
 from app.anomaly.explainer import explain_anomaly
 from app.config import INDEX_DIR
+from app.cases.router import router as cases_router
 import pandas as pd
 from pathlib import Path
 
@@ -44,6 +45,7 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[dict[str, Any]]
     query: str
+    confidence: dict[str, Any] | None = None
 
 
 class IngestResponse(BaseModel):
@@ -89,14 +91,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow all origins during development (tighten in production)
+# Local browser client only; this API exposes case documents and review history.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(cases_router)
 
 
 # -- Endpoints ---------------------------------------------------------
@@ -140,7 +143,7 @@ def query_endpoint(request: Request, payload: QueryRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
-        # Gemini API failures surface as RuntimeError
+        # Ollama failures surface as RuntimeError.
         raise HTTPException(status_code=502, detail=f"LLM service error: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")

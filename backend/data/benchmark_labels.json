@@ -1,0 +1,59 @@
+{
+  "expected_anomalies": [
+    {
+      "type": "rate_violation",
+      "row_indices": [
+        40
+      ]
+    },
+    {
+      "type": "rate_violation",
+      "row_indices": [
+        80
+      ]
+    },
+    {
+      "type": "rate_violation",
+      "row_indices": [
+        120
+      ]
+    },
+    {
+      "type": "rate_violation",
+      "row_indices": [
+        160
+      ]
+    },
+    {
+      "type": "rate_violation",
+      "row_indices": [
+        200
+      ]
+    },
+    {
+      "type": "duplicate",
+      "row_indices": [
+        0,
+        210
+      ]
+    },
+    {
+      "type": "outlier_zscore",
+      "row_indices": [
+        220
+      ]
+    },
+    {
+      "type": "outlier_iqr",
+      "row_indices": [
+        220
+      ]
+    }
+  ],
+  "known_approved_exceptions": [
+    {
+      "row_index": 230,
+      "reason": "Approved contract exception"
+    }
+  ]
+}
