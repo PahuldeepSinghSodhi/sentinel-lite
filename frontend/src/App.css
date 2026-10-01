@@ -243,8 +243,9 @@ button svg {
   display: flex;
   gap: 10px;
   align-items: center;
-  border-top: 1px solid var(--line);
-  padding: 20px 8px 0;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 8px;
   font-size: 11px;
 }
 .small {
@@ -341,32 +342,6 @@ h1 {
   background: #eef1e9;
   border-radius: 5px;
 }
-.section-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-bottom: 30px;
-}
-.section-shortcut {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  text-align: left;
-  background: #fcfdfa;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 20px 17px;
-  min-width: 0;
-}
-.section-shortcut.selected {
-  background: #edf3e9;
-  border-color: #becfb9;
-  box-shadow: 0 2px 5px #233e2410;
-}
-.section-shortcut:hover {
-  border-color: #9fb7a3;
-  background: #eff4eb;
-}
 .shortcut-icon {
   width: 38px;
   height: 38px;
@@ -375,26 +350,6 @@ h1 {
   place-items: center;
   background: #f0f3ed;
   color: #637c65;
-}
-.selected .shortcut-icon {
-  background: #dfead9;
-  color: #42694a;
-}
-.section-shortcut strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-}
-.section-shortcut small {
-  display: block;
-  font-size: 10px;
-  color: #85917f;
-  margin-top: 5px;
-  line-height: 1.4;
-}
-.shortcut-arrow {
-  color: #819779;
-  margin-left: auto;
 }
 .panel {
   border: 1px solid var(--line);
@@ -1247,7 +1202,6 @@ h1 {
   color: #697660;
 }
 .context-card p:not(.eyebrow),
-.section-shortcut small,
 .scan-empty > p:not(.eyebrow),
 .check-types small {
   color: #66755c;
@@ -1259,9 +1213,6 @@ h1 {
   }
   .page-heading {
     margin-bottom: 38px;
-  }
-  .section-shortcut {
-    padding: 25px;
   }
   .composer textarea {
     min-height: 200px;
@@ -1289,13 +1240,6 @@ h1 {
   .documents-layout {
     grid-template-columns: minmax(0, 1fr) 225px;
     gap: 18px;
-  }
-  .section-shortcut {
-    padding: 16px 12px;
-    gap: 10px;
-  }
-  .shortcut-arrow {
-    display: none;
   }
   .collection-tag {
     display: none;
@@ -1343,18 +1287,9 @@ h1 {
   .context-rail {
     display: none;
   }
-  .section-shortcut {
-    align-items: flex-start;
-  }
-  .section-shortcut small {
-    font-size: 9px;
-  }
   .shortcut-icon {
     width: 30px;
     height: 30px;
-  }
-  .section-shortcut strong {
-    font-size: 11px;
   }
   .metric {
     padding: 17px;
@@ -1447,9 +1382,6 @@ h1 {
   .page-description {
     font-size: 12px;
     max-width: 370px;
-  }
-  .section-shortcuts {
-    display: none;
   }
   .composer-actions {
     padding: 15px 16px;

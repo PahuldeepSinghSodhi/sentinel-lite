@@ -15,12 +15,6 @@ body { background: #f7f9f6; }
 .panel { border-color: transparent; border-radius: 15px; box-shadow: 0 8px 30px #2643330b; }
 .case-switcher { background: #fff; }
 .workspace-label { border-color: transparent; background: #f5f8f4; }
-.section-shortcuts { gap: 6px; margin-bottom: 25px; padding: 5px; border-radius: 13px; background: #eef3ed; }
-.section-shortcut { min-height: 55px; padding: 10px 13px; border-color: transparent; background: transparent; box-shadow: none; }
-.section-shortcut .shortcut-icon { width: 31px; height: 31px; background: transparent; }
-.section-shortcut small, .section-shortcut .shortcut-arrow { display: none; }
-.section-shortcut.selected { background: #fff; border-color: transparent; box-shadow: 0 3px 12px #26433312; }
-.section-shortcut:hover { border-color: transparent; background: #f9fcf9; box-shadow: none; transform: none; }
 .suggestion { border-color: transparent; box-shadow: 0 6px 22px #2643330a; }
 .suggestion:hover { border-color: transparent; background: #f5faf5; box-shadow: 0 9px 24px #26433316; transform: translateY(-1px); }
 .metric-link { border-color: transparent; }
@@ -128,7 +122,6 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible), summary:focus:not
 .legacy-answer > p { color: #345240; font-size: 13px; line-height: 1.7; }
 
 @media (max-width: 720px) {
-  .section-shortcuts { display: none; }
   .insight-answer { padding: 12px 16px 20px; }
   .insight-lead { padding: 18px; }
   .insight-metric { padding: 12px; }

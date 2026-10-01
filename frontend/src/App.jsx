@@ -159,16 +159,6 @@ export default function App() {
             </div>
           </section>
           {error && <div className="notice error" role="alert">{error}</div>}
-          <div className="section-shortcuts">
-            {sections.map(({ id, label, icon: Icon }, index) => (
-              <button type="button" key={id} className={`section-shortcut ${activeTab === id ? "selected" : ""}`}
-                onClick={() => navigateTo(id)} aria-pressed={activeTab === id}>
-                <span className="shortcut-icon"><Icon size={21} strokeWidth={1.6} /></span>
-                <span><strong>{label}</strong><small>{["Upload and verify case files", "Find what needs attention", "Answers from files and scans"][index]}</small></span>
-                <ArrowUpRight className="shortcut-arrow" size={17} />
-              </button>
-            ))}
-          </div>
           <div hidden={activeTab !== "documents"}>
             <DocumentsTab review={review} onChange={() => loadCase(review.id)} onStart={() => navigateTo("anomaly")}
               onNewCase={() => createCase(false)} busy={busy} />
