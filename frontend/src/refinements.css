@@ -54,6 +54,27 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible), summary:focus:not
 .evidence-title span { font-weight: 400; color: #829286; }
 .evidence-more, .show-more-vendors { display: inline-flex; align-items: center; gap: 7px; margin-top: 11px; padding: 8px 2px; border: 0; background: transparent; color: var(--green); font-size: 11px; font-weight: 600; }
 .evidence-more:hover, .show-more-vendors:hover { text-decoration: underline; }
+.evidence-preview pre { margin: 0; white-space: pre-wrap; font: inherit; }
+.evidence-csv { display: grid; gap: 5px; margin: 0; }
+.evidence-csv > div { display: grid; grid-template-columns: minmax(115px, 32%) 1fr; gap: 10px; padding: 5px 8px; border-radius: 6px; }
+.evidence-csv > div.relevant { background: #e8f3e8; color: #254d36; }
+.evidence-csv dt { font-weight: 650; overflow-wrap: anywhere; }
+.evidence-csv dd { margin: 0; overflow-wrap: anywhere; }
+.evidence-pdf a { flex: 1; overflow-wrap: anywhere; font-weight: 650; }
+.evidence-pdf a:hover { text-decoration: underline; }
+.evidence-pdf button { flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); font-size: 10px; }
+.evidence-pdf button:hover { color: var(--green); text-decoration: underline; }
+.clause-context { margin-top: 15px; padding: 14px; background: #f8faf6; border-radius: 10px; }
+.clause-context > strong { color: #4a674f; font-size: 11px; }
+.clause-context > p { margin-top: 8px; color: #718074; font-size: 11px; }
+.investigation-brief { margin-top: 14px; padding: 20px; border-radius: 13px; background: #f3f8f2; color: #395441; }
+.investigation-brief > strong { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.investigation-brief section { margin-top: 14px; }
+.investigation-brief h4 { margin: 0 0 4px; color: #274935; font-size: 11px; }
+.investigation-brief p { margin: 0; font-size: 12px; line-height: 1.7; }
+.investigation-brief > small { display: block; margin-top: 13px; color: #718074; font-size: 10px; }
+.citation-chip { display: inline; margin: 0 2px; padding: 2px 5px; border: 0; border-radius: 5px; background: #dcecdf; color: #2c6242; font-size: 10px; font-weight: 700; }
+.citation-chip:hover { background: #cce3d1; }
 
 /* Scan-backed answers: a quick read first, inspectable detail second. */
 .formatted-answer { padding: 14px 24px 23px; color: #405649; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }

@@ -1,0 +1,61 @@
+[
+  {
+    "document": "uk_fco_framework",
+    "finding_type": "rate_violation",
+    "acceptable": [
+      {"page": 17, "phrase": "Contract Price, calculated in accordance with Attachment 3"},
+      {"page": 19, "phrase": "Services shall be provided in accordance with the rate card"}
+    ],
+    "label_note": "Both the general pricing-schedule obligation and the specific rate-card obligation apply."
+  },
+  {
+    "document": "uk_fco_framework",
+    "finding_type": "missing_rate",
+    "expected_page": 19,
+    "expected_phrase": "Services shall be provided in accordance with the rate card"
+  },
+  {
+    "document": "uk_fco_framework",
+    "finding_type": "duplicate",
+    "expected_phrase": null
+  },
+  {
+    "document": "uk_cla_2019",
+    "finding_type": "rate_violation",
+    "expected_phrase": null,
+    "label_note": "Procurement guidance, not an executed vendor contract. No binding clause should be suggested."
+  },
+  {
+    "document": "uk_cla_2019",
+    "finding_type": "duplicate",
+    "expected_phrase": null
+  },
+  {
+    "document": "uk_cla_2018",
+    "finding_type": "rate_violation",
+    "expected_phrase": null,
+    "label_note": "Procurement guidance, not an executed vendor contract. No binding clause should be suggested."
+  },
+  {
+    "document": "uk_cla_2018",
+    "finding_type": "duplicate",
+    "expected_phrase": null
+  },
+  {
+    "document": "uk_cpa_contract",
+    "finding_type": "rate_violation",
+    "expected_page": 177,
+    "expected_phrase": "Monthly Variable Fee shall be calculated in accordance"
+  },
+  {
+    "document": "uk_cpa_contract",
+    "finding_type": "missing_rate",
+    "expected_page": 177,
+    "expected_phrase": "Monthly Variable Fee shall be calculated in accordance"
+  },
+  {
+    "document": "uk_cpa_contract",
+    "finding_type": "duplicate",
+    "expected_phrase": null
+  }
+]

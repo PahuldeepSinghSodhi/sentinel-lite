@@ -47,6 +47,19 @@ class FakeLLM:
         return "The approved rate is 100, according to the uploaded rate card."
 
 
+class FakeInvestigationLLM:
+    def __init__(self):
+        self.calls = 0
+
+    def generate_with_stats(self, prompt, **kwargs):
+        self.calls += 1
+        return {"response": '{"what_happened":"The billed rate exceeds the approved rate [E1] [E2].",'
+                            '"why_it_matters":"It may cause overbilling [E3] [E999].",'
+                            '"next_action":"Verify the source rows before deciding [E1]."}',
+                "prompt_eval_count": 200, "eval_count": 40,
+                "total_duration": 1000000000, "load_duration": 0}
+
+
 def sample_pdf():
     stream = io.BytesIO()
     pdf = canvas.Canvas(stream)
@@ -63,9 +76,12 @@ class CaseWorkflowTests(unittest.TestCase):
         self.environment = patch.dict(os.environ, {"SENTINEL_CASES_DIR": self.directory.name})
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        self.investigation_llm = FakeInvestigationLLM()
         for target, replacement in (
             ("app.main.load_existing_index", FAISSStore()),
             ("app.cases.sources.get_embedding_model", FakeEmbeddings()),
+            ("app.cases.clauses.get_embedding_model", FakeEmbeddings()),
+            ("app.cases.investigation.get_ollama_client", self.investigation_llm),
             ("app.rag.pipeline.get_embedding_model", FakeEmbeddings()),
             ("app.rag.pipeline.get_ollama_client", FakeLLM()),
             ("app.rag.multi_doc.get_embedding_model", FakeEmbeddings()),
@@ -126,6 +142,9 @@ class CaseWorkflowTests(unittest.TestCase):
         self.assertTrue(any(source.get("page") == 1 for source in question.json()["sources"]))
         excerpt = self.client.get(f"/cases/{case_id}/source/contract", params={"page": 1})
         self.assertIn("30 days", excerpt.json()["text"])
+        original = self.client.get(f"/cases/{case_id}/files/contract/original")
+        self.assertEqual(original.status_code, 200)
+        self.assertTrue(original.content.startswith(b"%PDF"))
         second_scan = self.client.post(f"/cases/{case_id}/scans")
         self.assertEqual(second_scan.status_code, 200)
         saved = self.client.get(f"/cases/{case_id}").json()
@@ -179,6 +198,99 @@ class CaseWorkflowTests(unittest.TestCase):
         self.assertEqual(scan.json()["transactions_analyzed"], 240)
         self.assertGreater(len(scan.json()["findings"]), 0)
         self.assertEqual(self.client.get(f"/cases/{case_id}/report").status_code, 200)
+
+    def test_clause_suggestion_and_one_call_cached_investigation(self):
+        case_id = self.create("Clause review")
+        other_id = self.create("Other review")
+        contract = (b"SECTION 1 RATE COMPLIANCE\n"
+                    b"Billing rates must match the approved rate card for services.\n\n"
+                    b"SECTION 2 SERVICE LEVELS\n"
+                    b"Service uptime must meet the availability target.\n")
+        for target in (case_id, other_id):
+            self.assertEqual(self.upload(target, "transactions", "tx.csv", TRANSACTIONS).status_code, 200)
+            self.assertEqual(self.upload(target, "rate_card", "rates.csv", RATES).status_code, 200)
+            self.assertEqual(self.upload(target, "contract", "terms.txt", contract).status_code, 200)
+            self.assertEqual(self.client.post(f"/cases/{target}/start").status_code, 200)
+        scan = self.client.post(f"/cases/{case_id}/scans")
+        self.assertEqual(scan.status_code, 200, scan.text)
+        self.assertEqual(self.investigation_llm.calls, 0)
+        finding = next(item for item in scan.json()["findings"] if item["type"] == "rate_violation")
+        clause = finding["contract_clause"]
+        self.assertEqual(clause["status"], "suggested")
+        self.assertEqual(clause["evidence"]["location"], "lines 1-2")
+        self.assertEqual(self.client.post(
+            f"/cases/{other_id}/findings/{finding['id']}/investigate").status_code, 404)
+        endpoint = f"/cases/{case_id}/findings/{finding['id']}/investigate"
+        first = self.client.post(endpoint)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(self.client.post(endpoint).json(), first.json())
+        self.assertEqual(self.investigation_llm.calls, 1)
+        self.assertNotIn("E999", str(first.json()))
+        saved = self.client.get(f"/cases/{case_id}").json()
+        self.assertEqual(saved["scans"][0]["findings"][0]["investigation"], first.json())
+        exported = self.client.get(f"/cases/{case_id}/report")
+        report_text = "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(exported.content)).pages)
+        self.assertIn("Investigation generated", report_text)
+        self.assertIn("Suggested contract context", report_text)
+
+    def test_clause_abstains_without_contract_or_with_conflicting_scope(self):
+        no_contract = self.create("No contract")
+        self.upload(no_contract, "transactions", "tx.csv", TRANSACTIONS)
+        self.upload(no_contract, "rate_card", "rates.csv", RATES)
+        self.client.post(f"/cases/{no_contract}/start")
+        finding = next(item for item in self.client.post(f"/cases/{no_contract}/scans").json()["findings"]
+                       if item["type"] == "rate_violation")
+        self.assertEqual(finding["contract_clause"]["status"], "no_contract")
+
+        conflicting = self.create("Other vendor and expired terms")
+        self.upload(conflicting, "transactions", "tx.csv", TRANSACTIONS)
+        self.upload(conflicting, "rate_card", "rates.csv", RATES)
+        self.upload(conflicting, "contract", "terms.txt",
+                    b"SECTION 1 RATE COMPLIANCE\nVendor: Beacon\n"
+                    b"Billing rates must match the approved rate card.\n")
+        self.client.post(f"/cases/{conflicting}/start")
+        finding = next(item for item in self.client.post(f"/cases/{conflicting}/scans").json()["findings"]
+                       if item["type"] == "rate_violation")
+        self.assertEqual(finding["contract_clause"]["status"], "no_match")
+        self.assertEqual(self.investigation_llm.calls, 0)
+
+    def test_investigation_failure_does_not_save_or_retry(self):
+        case_id = self.create("Model failure")
+        self.upload(case_id, "transactions", "tx.csv", TRANSACTIONS)
+        self.upload(case_id, "rate_card", "rates.csv", RATES)
+        self.client.post(f"/cases/{case_id}/start")
+        finding = next(item for item in self.client.post(f"/cases/{case_id}/scans").json()["findings"]
+                       if item["type"] == "rate_violation")
+        endpoint = f"/cases/{case_id}/findings/{finding['id']}/investigate"
+        with patch.object(self.investigation_llm, "generate_with_stats", side_effect=RuntimeError("offline")) as call:
+            response = self.client.post(endpoint)
+            self.assertEqual(response.status_code, 502)
+            self.assertEqual(call.call_count, 1)
+        self.assertIsNone(self.client.get(f"/cases/{case_id}").json()["scans"][0]["findings"][0]["investigation"])
+        self.assertEqual(self.client.post(endpoint).status_code, 200)
+        self.assertEqual(self.investigation_llm.calls, 1)
+
+    def test_source_location_validation_and_scanned_pdf_rejected(self):
+        case_id = self.create("Evidence locations")
+        self.upload(case_id, "transactions", "tx.csv", TRANSACTIONS)
+        self.upload(case_id, "rate_card", "rates.csv", RATES)
+        self.upload(case_id, "contract", "terms.txt", b"First line\nSecond line\n")
+        rows = self.client.get(f"/cases/{case_id}/source/transactions", params={"row": 2}).json()
+        self.assertEqual(rows["values"]["vendor_name"], "Apex")
+        lines = self.client.get(f"/cases/{case_id}/source/contract",
+                                params={"line_start": 1, "line_end": 2}).json()
+        self.assertIn("2: Second line", lines["text"])
+        self.assertEqual(self.client.get(f"/cases/{case_id}/source/contract",
+                                         params={"line_start": 0, "line_end": 2}).status_code, 400)
+        self.assertEqual(self.client.get(f"/cases/{case_id}/files/contract/original").status_code, 400)
+        blank = io.BytesIO()
+        pdf = canvas.Canvas(blank)
+        pdf.showPage()
+        pdf.save()
+        new_case = self.create("Image-only PDF")
+        response = self.upload(new_case, "contract", "scanned.pdf", blank.getvalue())
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("OCR", response.json()["detail"])
 
     def test_questions_use_latest_scan_exact_counts_and_source_rows(self):
         case_id = self.create("Cross-section review")

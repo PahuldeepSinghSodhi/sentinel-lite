@@ -4,7 +4,7 @@ import time
 import pandas as pd
 
 from app.anomaly.detector import detect_anomalies
-from app.cases import store
+from app.cases import clauses, store
 
 
 RULES = {
@@ -35,6 +35,8 @@ def scan_case(case_id: str) -> str:
     rates = pd.read_csv(store.file_path(case_id, "rate_card"))
     anomalies = detect_anomalies(transactions, rates)
     case = store.get_case(case_id)
+    matcher = clauses.Matcher(case_id, set(transactions["vendor_name"].astype(str)),
+                              set(transactions["role_level"].astype(str)))
     findings = []
     for anomaly in anomalies:
         item = plain(anomaly)
@@ -78,6 +80,9 @@ def scan_case(case_id: str) -> str:
         else:
             item["calculation"] = f"{len(item['row_indices'])} matching rows"
         item["evidence"] = evidence
+        first_row = (plain(transactions.iloc[item["row_indices"][0]].to_dict())
+                     if item.get("row_indices") else None)
+        item["contract_clause"] = matcher.suggest(item, first_row)
         findings.append(item)
     elapsed = round((time.perf_counter() - started) * 1000)
     return store.add_scan(case_id, findings, len(transactions), elapsed)

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "uk_cpa_contract",
+    "split": "held_out",
+    "type": "published_contract",
+    "title": "UK public-sector collection and preservation agreement",
+    "url": "https://assets.publishing.service.gov.uk/media/5a7512dfe5274a59fa717338/r_CPA_final.pdf",
+    "publisher": "UK government public document repository",
+    "usage_terms": "Not confirmed for this individual attachment; local evaluation only, no redistribution.",
+    "rights_note": "Publicly downloadable government document; stored locally for evaluation, not redistributed in this repository. Check source-specific reuse terms before redistribution."
+  },
+  {
+    "id": "uk_fco_framework",
+    "split": "development",
+    "type": "redacted_framework_agreement",
+    "title": "UK Conflict, Stability and Security Fund framework award (redacted)",
+    "url": "https://assets.publishing.service.gov.uk/media/5a815fd0e5274a2e87dbd486/CONFLICT_STABILITY_AND_SECURITY_FUND_Framework_Award_-_REDACTED.pdf",
+    "publisher": "UK government public document repository",
+    "usage_terms": "Not confirmed for this individual attachment; local evaluation only, no redistribution.",
+    "rights_note": "Publicly downloadable redacted procurement agreement; stored locally for evaluation, not redistributed in this repository."
+  },
+  {
+    "id": "uk_cla_2019",
+    "split": "development",
+    "type": "procurement_guidance_not_signed_contract",
+    "title": "Civil Legal Advice procurement information for applicants, 2019",
+    "url": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/814395/2019_CLA_Procurement_Process_IFA_v2.0.pdf",
+    "publisher": "UK Legal Aid Agency",
+    "usage_terms": "Not confirmed for this individual attachment; local evaluation only, no redistribution.",
+    "rights_note": "Public procurement guidance, not an executed vendor contract; used only as a labelled retrieval stress test."
+  },
+  {
+    "id": "uk_cla_2018",
+    "split": "development",
+    "type": "procurement_guidance_not_signed_contract",
+    "title": "Civil Legal Advice supplemental procurement information, 2018",
+    "url": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/704423/supplemental-CLA-procurement_process-IFA.pdf",
+    "publisher": "UK Legal Aid Agency",
+    "usage_terms": "Not confirmed for this individual attachment; local evaluation only, no redistribution.",
+    "rights_note": "Public procurement guidance, not an executed vendor contract; kept with the 2019 document in the same development family."
+  }
+]

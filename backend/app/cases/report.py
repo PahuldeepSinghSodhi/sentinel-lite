@@ -6,7 +6,7 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 
 
 def _safe(value) -> str:
@@ -59,11 +59,34 @@ def make_pdf(case: dict) -> bytes:
                     f"<b>Evidence:</b> {_safe(evidence['source'])}, {_safe(evidence['location'])} "
                     f"[{_safe(', '.join(evidence.get('columns', [])))}] — "
                     f"{_safe(evidence.get('excerpt', ''))}", styles["CaseSmall"]))
+            clause = finding.get("contract_clause") or {}
+            if clause.get("status") == "suggested" and clause.get("evidence"):
+                context = clause["evidence"]
+                lines.append(Paragraph(
+                    f"<b>Suggested contract context - verify:</b> {_safe(context['source'])}, "
+                    f"{_safe(context['location'])} — {_safe(context.get('excerpt', ''))}",
+                    styles["CaseSmall"]))
+            else:
+                lines.append(Paragraph("<b>Contract context:</b> No clause suggested.", styles["CaseSmall"]))
+            brief = finding.get("investigation")
+            if brief:
+                lines.append(Paragraph(f"<b>Investigation generated:</b> {_safe(brief['created_at'])}",
+                                       styles["CaseSmall"]))
+                for label, field in (("What happened", "what_happened"),
+                                     ("Why it matters", "why_it_matters"),
+                                     ("Next action", "next_action")):
+                    lines.append(Paragraph(f"<b>{label}:</b> {_safe(brief['sections'][field])}",
+                                           styles["CaseSmall"]))
+                for source in brief["sources"]:
+                    lines.append(Paragraph(
+                        f"<b>[{_safe(source['id'])}]</b> {_safe(source['source'])}, "
+                        f"{_safe(source['location'])} — {_safe(source.get('excerpt', ''))}",
+                        styles["CaseSmall"]))
             lines.append(Paragraph(
                 f"<b>Decision:</b> {_safe((finding.get('decision') or 'Not reviewed').replace('_', ' ').title())}"
                 f" · <b>Note:</b> {_safe(finding.get('note') or '—')}"
                 f" · <b>Decided:</b> {_safe(finding.get('decided_at') or '—')}", styles["CaseSmall"]))
-            story.extend([KeepTogether(lines), Spacer(1, 7)])
+            story.extend(lines + [Spacer(1, 7)])
     story.append(Paragraph("Document intelligence", styles["CaseSection"]))
     if not case["questions"]:
         story.append(Paragraph("No document questions have been asked for this case.", styles["CaseBody"]))

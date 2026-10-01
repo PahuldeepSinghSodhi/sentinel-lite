@@ -66,15 +66,23 @@ def index_path(case_id: str) -> Path:
 
 
 def build_index(case_id: str) -> FAISSStore:
+    from app.cases import clauses
+
     passages = list(sections(case_id))
     if not passages:
         raise ValueError("Uploaded files contain no searchable text")
     for index, passage in enumerate(passages):
         passage["chunk_index"] = index
-    embeddings = get_embedding_model().embed([item["text"] for item in passages])
-    vectorstore = FAISSStore(dimension=embeddings.shape[1])
-    vectorstore.add(embeddings, passages)
+    contract_passages = clauses.contract_passages(case_id)
+    embeddings = get_embedding_model().embed(
+        [item["text"] for item in passages + contract_passages]
+    )
+    main_vectors = embeddings[:len(passages)]
+    vectorstore = FAISSStore(dimension=main_vectors.shape[1])
+    vectorstore.add(main_vectors, passages)
     vectorstore.save(str(index_path(case_id)))
+    if contract_passages:
+        clauses.save_index(case_id, contract_passages, embeddings[len(passages):])
     return vectorstore
 
 
@@ -87,6 +95,7 @@ def excerpt(case_id: str, kind: str, *, page: int | None = None,
             line_end: int | None = None) -> dict:
     path = store.file_path(case_id, kind)
     info = store.get_case(case_id)["files"][kind]
+    values = None
     if path.suffix == ".pdf":
         reader = PdfReader(str(path))
         if page is None or not 1 <= page <= len(reader.pages):
@@ -106,4 +115,5 @@ def excerpt(case_id: str, kind: str, *, page: int | None = None,
         values = {column: _plain(value) for column, value in frame.iloc[row - 2].items()}
         text = json.dumps(values, ensure_ascii=False, indent=2)
         location = f"CSV row {row}"
-    return {"kind": kind, "source": info["filename"], "location": location, "text": text}
+    return {"kind": kind, "source": info["filename"], "location": location,
+            "text": text, "values": values}

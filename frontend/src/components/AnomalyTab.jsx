@@ -11,12 +11,21 @@ const decisions = [
   ["approved_exception", "Approved exception"], ["false_alarm", "False alarm"],
 ];
 
+function CitedText({ text, findingId }) {
+  return String(text || "").split(/(\[E\d+\])/g).map((part, index) => {
+    const match = /^\[(E\d+)\]$/.exec(part);
+    return match ? <button className="citation-chip" key={index} onClick={() =>
+      document.getElementById(`brief-${findingId}-${match[1]}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+      {match[1]}</button> : <span key={index}>{part}</span>;
+  });
+}
+
 function FindingCard({ finding, review, onChange, ordinal }) {
   const [decision, setDecision] = useState(finding.decision || "");
   const [note, setNote] = useState(finding.note || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [explanation, setExplanation] = useState("");
+  const [brief, setBrief] = useState(finding.investigation || null);
   const [explaining, setExplaining] = useState(false);
   async function save() {
     setSaving(true);
@@ -36,24 +45,29 @@ function FindingCard({ finding, review, onChange, ordinal }) {
     setExplaining(true);
     setError("");
     try {
-      const result = await api("/explain_anomaly", {
-        method: "POST",
-        body: JSON.stringify({ type: finding.type, severity: finding.severity,
-          description: finding.description, details: finding.details, row_indices: finding.row_indices }),
-      });
-      setExplanation(result.explanation);
+      const result = await api(`/cases/${review.id}/findings/${finding.id}/investigate`, { method: "POST" });
+      setBrief(result);
+      await onChange();
     } catch (err) {
       setError(err.message);
     } finally {
       setExplaining(false);
     }
   }
+  const savedBrief = finding.investigation || brief;
+  const clause = finding.contract_clause;
   return <article className="finding">
     <div className="finding-top"><span className={`severity ${finding.severity}`}>{finding.severity}</span>
       <h3>{labels[finding.type] || finding.type}</h3><span className="finding-id">#{ordinal}</span></div>
     <p>{finding.description}</p>
     <div className="finding-rule"><strong>Rule</strong> {finding.rule}<br /><strong>Calculation</strong> {finding.calculation}</div>
     <EvidenceList caseId={review.id} items={finding.evidence} />
+    <div className="clause-context">
+      <strong>Suggested contract context — verify before deciding</strong>
+      {clause?.status === "suggested" ? <EvidenceList caseId={review.id} items={[clause.evidence]}
+        title="Possible applicable passage" /> : <p>{clause?.status === "no_contract"
+        ? "No vendor contract was uploaded." : "No clause suggested for this finding."}</p>}
+    </div>
     <div className="decision-form">
       <label>Reviewer decision
         <select value={decision} onChange={(event) => setDecision(event.target.value)}>
@@ -68,12 +82,21 @@ function FindingCard({ finding, review, onChange, ordinal }) {
         {saving ? "Saving…" : finding.decision ? "Update decision" : "Save decision"}</button>
     </div>
     {finding.decided_at && <small className="saved-decision">Saved {new Date(finding.decided_at).toLocaleString()}</small>}
-    <button className="text-button explain-button" disabled={explaining} onClick={explain}>
+    <button className="text-button explain-button" disabled={explaining} onClick={savedBrief
+      ? () => document.getElementById(`investigation-${finding.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+      : explain}>
       {explaining ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
-      {explaining ? "Preparing explanation…" : "Explain this finding"}<ArrowRight size={14} />
+      {explaining ? "Preparing investigation…" : savedBrief ? "View saved investigation" : "Investigate with AI"}<ArrowRight size={14} />
     </button>
-    {explanation && <div className="explanation"><strong><Sparkles size={15} /> AI explanation</strong>
-      <p>{explanation}</p></div>}
+    {savedBrief && <div className="investigation-brief" id={`investigation-${finding.id}`}>
+      <strong><Sparkles size={15} /> Investigation brief</strong>
+      {[["What happened", "what_happened"], ["Why it matters", "why_it_matters"],
+        ["Next action", "next_action"]].map(([label, key]) =>
+        <section key={key}><h4>{label}</h4><p><CitedText text={savedBrief.sections[key]} findingId={finding.id} /></p></section>)}
+      <EvidenceList caseId={review.id} items={savedBrief.sources} title="Brief sources"
+        anchorPrefix={`brief-${finding.id}`} />
+      <small>AI-assisted context. Check linked sources before making a review decision.</small>
+    </div>}
     {error && <div className="notice error" role="alert">{error}</div>}
   </article>;
 }

@@ -3,7 +3,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from app.cases import questions, report, sources, store, workflow
+from app.cases import investigation, questions, report, sources, store, workflow
 from app.config import BACKEND_DIR
 
 
@@ -116,6 +116,14 @@ def cases_decide(case_id: str, finding_id: str, payload: Decision):
         _error(exc)
 
 
+@router.post("/{case_id}/findings/{finding_id}/investigate")
+def cases_investigate(case_id: str, finding_id: str):
+    try:
+        return investigation.investigate(case_id, finding_id)
+    except Exception as exc:
+        _error(exc)
+
+
 @router.post("/{case_id}/questions")
 def cases_ask(case_id: str, payload: AskCase):
     try:
@@ -138,6 +146,18 @@ def cases_source(case_id: str, kind: str, page: int | None = None, row: int | No
     try:
         return sources.excerpt(case_id, kind, page=page, row=row,
                                line_start=line_start, line_end=line_end)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.get("/{case_id}/files/contract/original")
+def cases_original_contract(case_id: str):
+    try:
+        path = store.file_path(case_id, "contract")
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("The uploaded contract is not a PDF")
+        return Response(path.read_bytes(), media_type="application/pdf",
+                        headers={"Content-Disposition": "inline"})
     except Exception as exc:
         _error(exc)
 

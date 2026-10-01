@@ -65,6 +65,11 @@ def connect():
             confidence_json TEXT NOT NULL, presentation_json TEXT,
             FOREIGN KEY(case_id) REFERENCES cases(id)
         );
+        CREATE TABLE IF NOT EXISTS investigations (
+            finding_id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            FOREIGN KEY(finding_id) REFERENCES findings(id)
+        );
     """)
     # Existing local cases predate the structured answer display. Keep their history intact.
     columns = {row["name"] for row in db.execute("PRAGMA table_info(questions)")}
@@ -99,6 +104,10 @@ def _case_row(db, case_id: str):
 def get_case(case_id: str) -> dict:
     with connect() as db:
         case = dict(_case_row(db, case_id))
+        investigations = {row["finding_id"]: json.loads(row["payload_json"])
+                          for row in db.execute("""SELECT investigations.* FROM investigations
+                              JOIN findings ON investigations.finding_id = findings.id
+                              JOIN scans ON findings.scan_id = scans.id WHERE scans.case_id = ?""", (case_id,))}
         files = {row["kind"]: dict(row) for row in db.execute(
             "SELECT kind, filename, extension, size, uploaded_at FROM files WHERE case_id = ?", (case_id,)
         )}
@@ -109,7 +118,8 @@ def get_case(case_id: str) -> dict:
             for finding in db.execute("SELECT * FROM findings WHERE scan_id = ? ORDER BY rowid", (scan["id"],)):
                 data = json.loads(finding["data_json"])
                 data.update(id=finding["id"], decision=finding["decision"], note=finding["note"],
-                            decided_at=finding["decided_at"])
+                            decided_at=finding["decided_at"],
+                            investigation=investigations.get(finding["id"]))
                 item["findings"].append(data)
             scans.append(item)
         questions = []
@@ -273,6 +283,29 @@ def decide(case_id: str, finding_id: str, decision: str, note: str) -> dict:
         db.execute("UPDATE findings SET decision = ?, note = ?, decided_at = ? WHERE id = ?",
                    (decision, note, when, finding_id))
     return {"id": finding_id, "decision": decision, "note": note, "decided_at": when}
+
+
+def get_finding(case_id: str, finding_id: str) -> dict:
+    case = get_case(case_id)
+    for scan in case["scans"]:
+        for finding in scan["findings"]:
+            if finding["id"] == finding_id:
+                return finding
+    raise KeyError("Finding not found in this review case")
+
+
+def save_investigation(case_id: str, finding_id: str, payload: dict) -> dict:
+    with connect() as db:
+        _case_row(db, case_id)
+        row = db.execute("""SELECT findings.id FROM findings JOIN scans ON findings.scan_id = scans.id
+                            WHERE findings.id = ? AND scans.case_id = ?""", (finding_id, case_id)).fetchone()
+        if row is None:
+            raise KeyError("Finding not found in this review case")
+        db.execute("INSERT OR IGNORE INTO investigations VALUES (?, ?, ?)",
+                   (finding_id, payload["created_at"], json.dumps(payload, allow_nan=False)))
+        saved = db.execute("SELECT payload_json FROM investigations WHERE finding_id = ?",
+                           (finding_id,)).fetchone()
+    return json.loads(saved["payload_json"])
 
 
 def add_question(case_id: str, question: str, answer: str, sources: list,

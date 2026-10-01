@@ -16,7 +16,7 @@ class OllamaClient:
         
         Args:
             base_url: The URL where Ollama is running (default http://localhost:11434).
-            model_name: The name of the model to use (default llama3.2).
+            model_name: The configured local model name (currently llama3.1 by default).
         """
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
@@ -36,6 +36,12 @@ class OllamaClient:
         Raises:
             RuntimeError: If the API call fails or Ollama is unreachable.
         """
+        return self.generate_with_stats(prompt, temperature=temperature,
+                                        max_output_tokens=max_output_tokens)["response"]
+
+    def generate_with_stats(self, prompt: str, temperature: float = 0.3,
+                            max_output_tokens: int = 1024, json_format: bool = False) -> dict:
+        """One generation call, retaining Ollama's timing and token measurements."""
         url = f"{self.base_url}/api/generate"
         
         payload = {
@@ -47,12 +53,18 @@ class OllamaClient:
                 "num_predict": max_output_tokens
             }
         }
+        if json_format:
+            payload["format"] = "json"
         
         try:
             response = requests.post(url, json=payload, timeout=120)
             response.raise_for_status()
             result = response.json()
-            return result.get("response", "")
+            return {"response": result.get("response", ""),
+                    "prompt_eval_count": result.get("prompt_eval_count"),
+                    "eval_count": result.get("eval_count"),
+                    "total_duration": result.get("total_duration"),
+                    "load_duration": result.get("load_duration")}
         except requests.exceptions.ConnectionError:
             raise RuntimeError(
                 f"Could not connect to Ollama at {self.base_url}. "

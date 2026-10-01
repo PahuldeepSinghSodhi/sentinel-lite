@@ -11,3 +11,4 @@ PyPDF2
 python-multipart
 reportlab
 httpx
+psutil
