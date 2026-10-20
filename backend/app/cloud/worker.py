@@ -1,4 +1,4 @@
-"""Run on the VM as a separate service: python -m app.cloud.worker."""
+"""Durable review worker used by the on-demand Modal processing function."""
 import logging
 import shutil
 import threading

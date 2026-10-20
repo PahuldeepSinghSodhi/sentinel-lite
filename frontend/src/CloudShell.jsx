@@ -9,6 +9,11 @@ export default function CloudShell() {
   const [user, setUser] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const googleEnabled = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
+  const githubEnabled = import.meta.env.VITE_ENABLE_GITHUB_AUTH === "true";
 
   useEffect(() => {
     let live = true;
@@ -37,6 +42,19 @@ export default function CloudShell() {
     if (issue) setError(issue.message);
   }
 
+  async function emailSignIn(event) {
+    event.preventDefault();
+    setError("");
+    setSending(true);
+    const { error: issue } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setSending(false);
+    if (issue) setError(issue.message);
+    else setEmailSent(true);
+  }
+
   if (user) return <Workspace cloudUser={user} onSignOut={() => supabase.auth.signOut()} />;
   return <div className="cloud-entry"><div className="cloud-entry-card">
     <span className="cloud-logo"><Layers3 size={24} /> sentinel<span>.</span></span>
@@ -46,8 +64,19 @@ export default function CloudShell() {
     {loading || (session && !error) ? <p role="status">Checking your invitation…</p> :
       session ? <><div className="notice error" role="alert">{error}</div>
         <button className="button secondary" onClick={() => supabase.auth.signOut()}>Sign out and try another account</button></> :
-      <><div className="cloud-signin"><button className="button primary" onClick={() => signIn("google")}>Continue with Google <ArrowRight size={16} /></button>
-        <button className="button secondary" onClick={() => signIn("github")}>Continue with GitHub <ArrowRight size={16} /></button></div>
+      <><div className="cloud-signin">
+        {emailSent ? <p role="status">Check your inbox for a sign-in link. Open it on this device to enter your workspace.</p> :
+          <form className="cloud-email-form" onSubmit={emailSignIn}>
+            <label htmlFor="cloud-email">Invited email</label>
+            <input id="cloud-email" type="email" autoComplete="email" required value={email}
+              onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
+            <button className="button primary" type="submit" disabled={sending}>
+              {sending ? "Sending link…" : "Email me a sign-in link"} <ArrowRight size={16} />
+            </button>
+          </form>}
+        {googleEnabled && <button className="button secondary" onClick={() => signIn("google")}>Continue with Google <ArrowRight size={16} /></button>}
+        {githubEnabled && <button className="button secondary" onClick={() => signIn("github")}>Continue with GitHub <ArrowRight size={16} /></button>}
+      </div>
         {error && <div className="notice error" role="alert">{error}</div>}</>}
     <div className="cloud-entry-footer"><span><LockKeyhole size={16} /> Invitation required</span>
       <span><ShieldCheck size={16} /> Private case files</span></div>

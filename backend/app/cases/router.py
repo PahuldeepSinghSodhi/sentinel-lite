@@ -59,8 +59,8 @@ def cases_demo():
         store.save_file(case_id, kind, path.name, path.read_bytes())
     try:
         if SENTINEL_MODE == "cloud":
-            from app.cloud import jobs
-            jobs.queue(case_id, "start")
+            from app.cloud.dispatch import queue_and_dispatch
+            queue_and_dispatch(case_id, "start")
         else:
             sources.build_index(case_id)
             store.mark_started(case_id)
@@ -94,8 +94,8 @@ async def cases_upload(case_id: str, kind: str, file: UploadFile = File(...)):
 def cases_start(case_id: str):
     try:
         if SENTINEL_MODE == "cloud":
-            from app.cloud import jobs
-            return jobs.queue(case_id, "start")
+            from app.cloud.dispatch import queue_and_dispatch
+            return queue_and_dispatch(case_id, "start")
         case = store.get_case(case_id)
         if not case["can_start"]:
             raise ValueError("Upload valid transactions and rate card before starting")
@@ -110,8 +110,8 @@ def cases_start(case_id: str):
 def cases_scan(case_id: str):
     try:
         if SENTINEL_MODE == "cloud":
-            from app.cloud import jobs
-            return jobs.queue(case_id, "scan")
+            from app.cloud.dispatch import queue_and_dispatch
+            return queue_and_dispatch(case_id, "scan")
         scan_id = workflow.scan_case(case_id)
         case = store.get_case(case_id)
         return next(scan for scan in case["scans"] if scan["id"] == scan_id)

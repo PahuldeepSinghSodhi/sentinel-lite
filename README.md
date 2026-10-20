@@ -1,6 +1,6 @@
 # Sentinel-Lite
 
-> The local version remains the default. An opt-in invite-only cloud mode is being prepared; it is **not live or validated on an Oracle VM yet**. See [cloud deployment guide](docs/cloud-deployment.md) for the required accounts, migration, and verification gates.
+> The local version remains the default. An opt-in invite-only Modal cloud mode is being prepared; it is **not live or end-to-end validated yet**. See [cloud deployment guide](docs/cloud-deployment.md) for the strict free-usage gate and verification steps.
 
 Sentinel-Lite is a local procurement review assistant. It flags duplicate transactions, unusual values, and hourly rates above an approved rate card. Reviewers can inspect the exact source location, record a decision, ask questions about uploaded files, and export a PDF case report. AI answers and explanations use a local Ollama model; anomaly detection is rule/statistics based.
 

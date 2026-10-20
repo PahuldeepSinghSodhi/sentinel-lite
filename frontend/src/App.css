@@ -1534,6 +1534,10 @@ h1 {
 .cloud-lead { color: #697c6e; font-size: 15px; line-height: 1.7; max-width: 410px; }
 .cloud-signin { display: grid; gap: 10px; margin: 32px 0; }
 .cloud-signin .button { width: 100%; justify-content: space-between; padding: 15px 18px; }
+.cloud-email-form { display: grid; gap: 10px; }
+.cloud-email-form label { font-size: 13px; font-weight: 700; color: var(--ink); }
+.cloud-email-form input { width: 100%; min-height: 48px; border: 1px solid #dce5db; border-radius: 10px; padding: 0 14px; background: #fff; color: var(--ink); font: inherit; }
+.cloud-email-form input:focus-visible { outline: 2px solid #4e8068; outline-offset: 2px; }
 .cloud-entry-footer { border-top: 1px solid #e7eee6; padding-top: 22px; margin-top: 26px;
   display: flex; flex-wrap: wrap; gap: 22px; color: #718375; font-size: 12px; }
 .cloud-entry-footer span { display: inline-flex; gap: 8px; align-items: center; }

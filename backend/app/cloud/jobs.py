@@ -49,6 +49,16 @@ def get(job_id: str) -> dict:
     return {"job_id": row.pop("id"), **row}
 
 
+def has_due() -> bool:
+    """Check whether the scheduled recovery function needs to wake a worker."""
+    with db.connect() as conn:
+        row = conn.execute("""SELECT 1 FROM jobs WHERE
+                              (status = 'queued' AND (leased_until IS NULL OR leased_until < now()))
+                              OR (status = 'running' AND leased_until < now())
+                              LIMIT 1""").fetchone()
+    return row is not None
+
+
 def claim() -> dict | None:
     with db.connect() as conn:
         # A worker can die during its last attempt without calling fail().
