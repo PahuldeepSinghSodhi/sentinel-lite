@@ -13,8 +13,14 @@ APP_NAME = "sentinel-cloud"
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
+    # The default Linux PyTorch wheel pulls CUDA libraries even on CPU-only
+    # workers. Install the official CPU wheel first to keep the image lean.
+    .run_commands("python -m pip install torch==2.7.0 --index-url https://download.pytorch.org/whl/cpu")
     .pip_install_from_requirements(str(ROOT / "backend" / "requirements.txt"))
     .pip_install("modal==1.6.2")
+    # Bake the embedding weights into the image so cold workers do not fetch
+    # them on every scale-from-zero start.
+    .run_commands("python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')\"")
     .env({"SENTINEL_MODE": "cloud"})
     .add_local_dir(str(ROOT / "backend" / "app"), remote_path="/root/app")
     .add_local_dir(str(ROOT / "backend" / "data"), remote_path="/root/data")

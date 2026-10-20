@@ -1,6 +1,12 @@
 # Invite-only cloud beta: Modal deployment runbook
 
-This is an **opt-in implementation**, not a live URL or a production-readiness
+The invite-only beta is deployed at
+<https://sentinel-document-intelligence.vercel.app>. Its API is hosted at
+<https://pahuldeepsinghsodhi--sentinel-cloud-api.us-east.modal.run>. The
+frontend, API health check, database connection, service key, email-link
+request, CORS, and unauthenticated-route rejection were verified on
+2026-10-20. A signed-in upload-to-report walkthrough and second-account
+isolation check are still pending; this is **not** a production-readiness
 claim. Local mode remains the default and keeps local Ollama. Never expose the
 original unauthenticated local API to the public internet.
 
@@ -19,14 +25,14 @@ key. Scanning itself makes zero AI calls.
 ## Strictly free deployment gate
 
 1. Use **Modal Starter only**. Before creating a secret or deploying, inspect
-   Usage & Billing. A workspace **without a payment method may receive only $1
-   of the advertised $30 monthly credit**, with a Modal-set $1 usage limit.
-   That no-card configuration is suitable only if the displayed usage limit is
-   no higher than the available credit. Do not add a payment method for this
-   strictly free demo. If the account has a payment method, set a Workspace
-   usage budget no higher than the available credit **and** a $0 out-of-pocket
-   spend limit; stop if either guardrail is unavailable. Never assume the
-   published $30 credit is active for a particular workspace. Do not use Modal Shared
+   Usage & Billing and the *current* credit amount. The project workspace was
+   manually capped at **$4 total monthly usage** on 2026-10-20;
+   recheck that it remains at $4 or below, with at least $4 of applicable
+   credit. The page showed a **$0 default spend limit** after the usage cap
+   was lowered; verify that again before every deployment. Do not add a
+   payment method for this strictly free demo. If either guardrail changes or
+   the available credit falls below the usage cap, stop and do not redeploy.
+   Do not use Modal Shared
    Endpoints, GPUs, paid regions, paid persistent volumes, or minimum running
    containers. The app uses none of these.
 2. Check Supabase Free and Vercel Hobby usage separately. Their limits are not
@@ -64,6 +70,9 @@ key. Scanning itself makes zero AI calls.
    are not needed. The Starter plan does not include custom domains for Modal
    web functions. Verify `/` reports `mode: cloud` and `/health` returns
    `status: ready`; the latter checks database reachability.
+   The image installs the official CPU-only PyTorch wheel before the other
+   dependencies so that an unneeded CUDA stack is not pulled into this
+   CPU-only deployment.
 5. Deploy the Vercel build. Confirm the email-link redirect, invite rejection,
    ownership checks, upload, preparation job, scan job, question, citation,
    report, refresh, and deletion with synthetic files. Test a second account
@@ -93,7 +102,9 @@ also require a bearer token. Legacy unauthenticated `/query`, `/reason`,
   material without authorization.
 - The API currently requests 0.5 Modal physical CPU and 2 GiB RAM; the worker
   requests 1 CPU and 4 GiB RAM. These are **configuration limits, not measured
-  peak usage**. Measure a synthetic case and tune downward if possible. Both
+  peak usage**. The embedding model is baked into the image to avoid a fresh
+  download each time a worker scales up. Measure a synthetic case and tune
+  downward if possible. Both
   functions are capped at one container; unused functions scale to zero. The
   hourly recovery check consumes some compute even when the app is idle. A
   queued job may take up to an hour to recover automatically; retrying Start
