@@ -33,6 +33,7 @@ backend/data/evaluation_public/
 frontend/node_modules/
 frontend/dist/
 frontend/.vercel/
+.vercel/
 
 # Environment variables
 .env
