@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.cases import investigation, questions, report, sources, store, workflow
 from app.config import BACKEND_DIR
+from app.config import SENTINEL_MODE
 
 
 router = APIRouter(prefix="/cases", tags=["Review cases"])
@@ -57,8 +58,12 @@ def cases_demo():
     ):
         store.save_file(case_id, kind, path.name, path.read_bytes())
     try:
-        sources.build_index(case_id)
-        store.mark_started(case_id)
+        if SENTINEL_MODE == "cloud":
+            from app.cloud import jobs
+            jobs.queue(case_id, "start")
+        else:
+            sources.build_index(case_id)
+            store.mark_started(case_id)
     except Exception as exc:
         _error(exc)
     return store.get_case(case_id)
@@ -88,6 +93,9 @@ async def cases_upload(case_id: str, kind: str, file: UploadFile = File(...)):
 @router.post("/{case_id}/start")
 def cases_start(case_id: str):
     try:
+        if SENTINEL_MODE == "cloud":
+            from app.cloud import jobs
+            return jobs.queue(case_id, "start")
         case = store.get_case(case_id)
         if not case["can_start"]:
             raise ValueError("Upload valid transactions and rate card before starting")
@@ -101,6 +109,9 @@ def cases_start(case_id: str):
 @router.post("/{case_id}/scans")
 def cases_scan(case_id: str):
     try:
+        if SENTINEL_MODE == "cloud":
+            from app.cloud import jobs
+            return jobs.queue(case_id, "scan")
         scan_id = workflow.scan_case(case_id)
         case = store.get_case(case_id)
         return next(scan for scan in case["scans"] if scan["id"] == scan_id)
@@ -169,8 +180,22 @@ def cases_report(case_id: str):
         if not case["can_report"]:
             raise ValueError("Run a scan or ask a question before downloading a report")
         pdf = report.make_pdf(case)
+        if SENTINEL_MODE == "cloud":
+            from app.cloud import store as cloud_store
+            cloud_store.save_report(case_id, pdf)
         return Response(pdf, media_type="application/pdf", headers={
             "Content-Disposition": f'attachment; filename="sentinel-review-{case_id[:8]}.pdf"'
         })
+    except Exception as exc:
+        _error(exc)
+
+
+@router.delete("/{case_id}", status_code=204)
+def cases_delete(case_id: str):
+    if SENTINEL_MODE != "cloud":
+        raise HTTPException(404, "Case deletion is not available in local mode")
+    try:
+        from app.cloud import store as cloud_store
+        cloud_store.delete_case(case_id)
     except Exception as exc:
         _error(exc)

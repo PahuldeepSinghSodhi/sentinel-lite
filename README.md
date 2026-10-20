@@ -1,5 +1,7 @@
 # Sentinel-Lite
 
+> The local version remains the default. An opt-in invite-only cloud mode is being prepared; it is **not live or validated on an Oracle VM yet**. See [cloud deployment guide](docs/cloud-deployment.md) for the required accounts, migration, and verification gates.
+
 Sentinel-Lite is a local procurement review assistant. It flags duplicate transactions, unusual values, and hourly rates above an approved rate card. Reviewers can inspect the exact source location, record a decision, ask questions about uploaded files, and export a PDF case report. AI answers and explanations use a local Ollama model; anomaly detection is rule/statistics based.
 
 ## What a review looks like
@@ -74,7 +76,7 @@ Run `python -m unittest tests.test_cases tests.test_benchmark -v` from `backend/
 
 On the initial generated benchmark, the detector found 9 labelled type/row pairs with 3 false positives: **75% precision, 100% recall, 85.7% F1**. All three false-positive type/row flags arise from the single approved exception at transaction row index 230, demonstrating why reviewer decisions matter. These are controlled synthetic results and do not establish real-world accuracy or time savings. Scan duration printed by the script covers anomaly detection and scoring only; it excludes uploads, embedding, LLM generation, and human review. The original 20-question RAG harness remains in `backend/tests/test_evaluation.py`; CI runs retrieval-only checks because Ollama is not present on the runner. Full LLM evaluation must run locally.
 
-The current version is a single-user local prototype: no login, OCR, multi-user permissions, or deployment-grade data governance. The LLM can still be wrong; reviewers should verify citations and decisions.
+The default local mode is a single-user prototype without login or OCR. The opt-in cloud mode adds account ownership and private storage, but is not a production security certification. The LLM can still be wrong; reviewers should verify citations and decisions.
 
 ### Contract-clause evaluation
 

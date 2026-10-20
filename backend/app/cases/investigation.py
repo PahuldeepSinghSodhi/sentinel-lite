@@ -57,7 +57,8 @@ def investigate(case_id: str, finding_id: str) -> dict:
             f"Contract context: {clause.get('status', 'unavailable')}\n"
             f"Evidence: {json.dumps(limited, ensure_ascii=False)}"
         )
-        response = get_ollama_client().generate_with_stats(
+        client = get_ollama_client()
+        response = client.generate_with_stats(
             prompt, temperature=0.1, max_output_tokens=330, json_format=True)
         try:
             parsed = json.loads(response["response"])
@@ -68,7 +69,7 @@ def investigate(case_id: str, finding_id: str) -> dict:
         except (ValueError, TypeError, KeyError) as exc:
             raise RuntimeError("Ollama returned an invalid investigation brief; no result was saved") from exc
         payload = {"sections": sections, "sources": sources, "created_at": store.utc_now(),
-                   "model": OLLAMA_MODEL,
+                   "model": getattr(client, "model_name", OLLAMA_MODEL),
                    "usage": {key: response.get(key) for key in
                              ("prompt_eval_count", "eval_count", "total_duration", "load_duration")}}
         return store.save_investigation(case_id, finding_id, payload)

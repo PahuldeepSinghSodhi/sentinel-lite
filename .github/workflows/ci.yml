@@ -75,6 +75,10 @@ jobs:
         working-directory: backend
         run: python -m unittest tests.test_cases tests.test_benchmark -v
 
+      - name: Run cloud security and mode-isolation smoke tests
+        working-directory: backend
+        run: python -m unittest tests.test_cloud -v
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

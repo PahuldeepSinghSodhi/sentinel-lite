@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckCircle2, FileText, Loader2, Plus, Table2, UploadCloud } from "lucide-react";
 import { api, uploadFile } from "../api";
+import { CLOUD_MODE } from "../cloud";
 
 const slots = [
   { kind: "transactions", title: "Transactions", description: "The charges you want to review.",
@@ -34,7 +35,7 @@ export default function DocumentsTab({ review, onChange, onStart, onNewCase, bus
     try {
       await api(`/cases/${review.id}/start`, { method: "POST" });
       await onChange();
-      onStart();
+      if (!CLOUD_MODE) onStart();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -75,12 +76,13 @@ export default function DocumentsTab({ review, onChange, onStart, onNewCase, bus
           })}
         </div>
         <div className="upload-footer">
-          <div><strong>{review.ready ? "Review active" : review.can_start ? "Ready to start" : "Two files required"}</strong>
-            <p>{review.ready ? "Files are locked so past findings keep their original evidence. Create a new case for new files."
+          <div><strong>{review.ready ? "Review active" : review.status === "starting" ? "Preparing review" : review.can_start ? "Ready to start" : "Two files required"}</strong>
+            <p>{review.status === "starting" ? "Indexing is running in the background. This case will open automatically when ready."
+              : review.ready ? "Files are locked so past findings keep their original evidence. Create a new case for new files."
               : "Transactions and approved rate card are required before scanning or asking questions."}</p></div>
           {review.status === "draft" && <button className="button primary" disabled={!review.can_start || Boolean(uploading) || starting}
             onClick={startReview}>{starting ? <Loader2 className="spin" size={16} /> : <CheckCircle2 size={16} />}
-            {starting ? "Indexing files…" : "Start review"}</button>}
+            {starting ? "Preparing…" : "Start review"}</button>}
         </div>
       </section>
       <aside className="context-rail"><div className="context-card"><span className="rail-icon"><FileText size={23} /></span>

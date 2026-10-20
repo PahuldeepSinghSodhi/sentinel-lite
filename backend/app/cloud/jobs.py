@@ -1,0 +1,101 @@
+"""Durable, idempotent review jobs stored in Postgres."""
+from uuid import UUID, uuid4
+
+from app.cloud import db
+from app.cloud.auth import current_user
+
+
+def queue(case_id: str, kind: str) -> dict:
+    if kind not in {"start", "scan"}:
+        raise ValueError("Unknown job type")
+    owner_id = current_user()["id"]
+    with db.connect() as conn:
+        case = conn.execute("SELECT status FROM cases WHERE id = %s AND owner_id = %s FOR UPDATE",
+                            (case_id, owner_id)).fetchone()
+        if not case:
+            raise KeyError("Review case not found")
+        pending = conn.execute("""SELECT id, status FROM jobs WHERE case_id = %s AND kind = %s
+                                  AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1""",
+                               (case_id, kind)).fetchone()
+        if pending:
+            return {"job_id": pending["id"], "status": pending["status"]}
+        if kind == "start":
+            if case["status"] != "draft":
+                raise ValueError("Review has already started")
+            kinds = {row["kind"] for row in conn.execute(
+                "SELECT kind FROM case_files WHERE case_id = %s", (case_id,))}
+            if not {"transactions", "rate_card"}.issubset(kinds):
+                raise ValueError("Upload transactions and rate card before starting")
+            conn.execute("UPDATE cases SET status = 'starting' WHERE id = %s", (case_id,))
+        elif case["status"] != "active":
+            raise ValueError("Start the review before scanning")
+        job_id = str(uuid4())
+        conn.execute("INSERT INTO jobs (id, case_id, owner_id, kind) VALUES (%s, %s, %s, %s)",
+                     (job_id, case_id, owner_id, kind))
+        return {"job_id": job_id, "status": "queued"}
+
+
+def get(job_id: str) -> dict:
+    try:
+        job_id = str(UUID(str(job_id)))
+    except ValueError as exc:
+        raise KeyError("Job not found") from exc
+    with db.connect() as conn:
+        row = conn.execute("""SELECT id, case_id, kind, status, attempts, result_id, error,
+                              created_at, updated_at FROM jobs WHERE id = %s AND owner_id = %s""",
+                           (job_id, current_user()["id"])).fetchone()
+    if not row:
+        raise KeyError("Job not found")
+    return {"job_id": row.pop("id"), **row}
+
+
+def claim() -> dict | None:
+    with db.connect() as conn:
+        # A worker can die during its last attempt without calling fail().
+        # Expired final leases must become visible failures, not run forever.
+        exhausted = list(conn.execute("""UPDATE jobs SET status = 'failed', leased_until = null,
+                             error = 'Processing stopped after three attempts', updated_at = now()
+                             WHERE status = 'running' AND leased_until < now() AND attempts >= 3
+                             RETURNING case_id, kind"""))
+        for item in exhausted:
+            if item["kind"] == "start":
+                conn.execute("UPDATE cases SET status = 'draft' WHERE id = %s AND status = 'starting'",
+                             (item["case_id"],))
+        row = conn.execute("""SELECT * FROM jobs WHERE
+                              ((status = 'queued' AND (leased_until IS NULL OR leased_until < now()))
+                               OR (status = 'running' AND leased_until < now()))
+                              AND attempts < 3 ORDER BY created_at
+                              LIMIT 1 FOR UPDATE SKIP LOCKED""").fetchone()
+        if not row:
+            return None
+        conn.execute("""UPDATE jobs SET status = 'running', attempts = attempts + 1,
+                        leased_until = now() + interval '15 minutes', updated_at = now()
+                        WHERE id = %s""", (row["id"],))
+        row["attempts"] += 1
+        return row
+
+
+def finish(job_id: str, result_id: str | None = None) -> None:
+    with db.connect() as conn:
+        conn.execute("""UPDATE jobs SET status = 'completed', result_id = %s, error = null,
+                        leased_until = null, updated_at = now() WHERE id = %s""", (result_id, job_id))
+
+
+def extend(job_id: str) -> None:
+    with db.connect() as conn:
+        conn.execute("""UPDATE jobs SET leased_until = now() + interval '15 minutes', updated_at = now()
+                        WHERE id = %s AND status = 'running'""", (job_id,))
+
+
+def fail(job: dict) -> None:
+    final = job["attempts"] >= 3
+    with db.connect() as conn:
+        conn.execute("""UPDATE jobs SET status = %s,
+                        leased_until = CASE WHEN %s THEN null ELSE now() + interval '1 minute' END,
+                        error = %s, updated_at = now() WHERE id = %s""",
+                     ("failed" if final else "queued", final,
+                      "Processing failed; retry or contact the administrator" if final else None,
+                      job["id"]))
+        if final and job["kind"] == "start":
+            conn.execute("UPDATE cases SET status = 'draft' WHERE id = %s AND status = 'starting'",
+                         (job["case_id"],))

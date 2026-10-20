@@ -15,8 +15,10 @@ Run with:
     uvicorn app.main:app --reload --port 8000
 """
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from typing import Any
 
@@ -26,7 +28,7 @@ from app.rag.multi_doc import multi_doc_query
 from app.anomaly.detector import detect_anomalies
 from app.anomaly.router import classify_query
 from app.anomaly.explainer import explain_anomaly
-from app.config import INDEX_DIR
+from app.config import INDEX_DIR, SENTINEL_MODE
 from app.cases.router import router as cases_router
 import pandas as pd
 from pathlib import Path
@@ -58,6 +60,7 @@ class HealthResponse(BaseModel):
     """Schema for the / health check response."""
     status: str
     documents_indexed: int
+    mode: str
 
 
 # -- Application Lifespan ---------------------------------------------
@@ -69,6 +72,11 @@ async def lifespan(app: FastAPI):
     The loaded store is saved to app.state.store so all endpoints
     can access it without reinitializing.
     """
+    if SENTINEL_MODE == "cloud":
+        from app.cloud.settings import validate_settings
+        validate_settings()
+        yield
+        return
     print("[STARTUP] Loading document index...")
     try:
         store = load_existing_index()
@@ -91,15 +99,35 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Local browser client only; this API exposes case documents and review history.
+app.include_router(cases_router)
+
+if SENTINEL_MODE == "cloud":
+    from app.cloud.router import router as cloud_router
+    app.include_router(cloud_router)
+
+    @app.middleware("http")
+    async def cloud_gate(request: Request, call_next):
+        from app.cloud.auth import authenticate, user_context
+        if request.method == "OPTIONS" or request.url.path in {"/", "/health", "/openapi.json", "/docs"}:
+            return await call_next(request)
+        if not request.url.path.startswith(("/cases", "/jobs", "/me", "/admin")):
+            return Response(status_code=404)
+        try:
+            user = authenticate(request.headers.get("authorization", ""))
+        except PermissionError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=401)
+        with user_context(user):
+            return await call_next(request)
+
+# Added last so even authentication failures include the allowed browser origin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=(["http://localhost:5173", "http://127.0.0.1:5173"] if SENTINEL_MODE == "local"
+                   else [os.getenv("SENTINEL_FRONTEND_ORIGIN", "https://sentinel-document-intelligence.vercel.app")]),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(cases_router)
 
 
 # -- Endpoints ---------------------------------------------------------
@@ -111,7 +139,23 @@ def health_check(request: Request):
     return {
         "status": "healthy",
         "documents_indexed": store.total_vectors if store else 0,
+        "mode": SENTINEL_MODE,
     }
+
+
+@app.get("/health")
+def readiness_check(request: Request):
+    """Readiness includes the cloud database, not just the HTTP process."""
+    if SENTINEL_MODE == "cloud":
+        from app.cloud import db
+        try:
+            with db.connect() as conn:
+                conn.execute("SELECT 1")
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Cloud database is unavailable") from exc
+    elif getattr(request.app.state, "store", None) is None:
+        raise HTTPException(status_code=503, detail="Document index is unavailable")
+    return {"status": "ready", "mode": SENTINEL_MODE}
 
 
 @app.post("/query", response_model=QueryResponse)

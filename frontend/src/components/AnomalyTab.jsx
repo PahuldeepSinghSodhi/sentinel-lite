@@ -122,6 +122,7 @@ export default function AnomalyTab({ review, onChange, onViewFiles }) {
     <button className="button secondary" onClick={onViewFiles}>Open source files</button></section>;
   const scans = [...review.scans].reverse();
   const latest = scans[0];
+  const pending = ["queued", "running"].includes(review.job?.status) && review.job?.kind === "scan";
   const total = scans.reduce((count, item) => count + item.findings.length, 0);
   function jumpTo(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -135,9 +136,9 @@ export default function AnomalyTab({ review, onChange, onViewFiles }) {
   return <div className="anomaly-layout">
     <section className="panel scan-bar"><div className="scan-title"><span className="shortcut-icon"><ShieldAlert size={23} /></span>
       <div><h2>Transaction review</h2><p>Scan this case’s uploaded transactions against its approved rates.</p></div></div>
-      <button className="button primary" disabled={scanning} onClick={scan}>
-        {scanning ? <Loader2 className="spin" size={16} /> : <Play size={15} />}
-        {scanning ? "Scanning…" : latest ? "Run another scan" : "Run scan"}</button></section>
+      <button className="button primary" disabled={scanning || pending} onClick={scan}>
+        {scanning || pending ? <Loader2 className="spin" size={16} /> : <Play size={15} />}
+        {scanning || pending ? "Scanning…" : latest ? "Run another scan" : "Run scan"}</button></section>
     {error && <div className="notice error" role="alert">{error}</div>}
     {!latest && <section className="panel scan-empty"><div className="empty-illustration"><div /><span><FileSearch size={38} /></span></div>
       <p className="eyebrow">READY TO REVIEW</p><h2>Know where to look first.</h2>

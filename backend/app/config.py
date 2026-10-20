@@ -7,6 +7,10 @@ the codebase and makes it easy to adjust settings later.
 import os
 from pathlib import Path
 
+SENTINEL_MODE = os.getenv("SENTINEL_MODE", "local").lower()
+if SENTINEL_MODE not in {"local", "cloud"}:
+    raise ValueError("SENTINEL_MODE must be 'local' or 'cloud'")
+
 # ── Project Paths ──────────────────────────────────────────────────
 # All paths are relative to the backend/ directory.
 BACKEND_DIR = Path(__file__).resolve().parent.parent  # sentinel-lite/backend/

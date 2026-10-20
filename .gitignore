@@ -36,6 +36,8 @@ frontend/dist/
 # Environment variables
 .env
 .env.local
+backend/.env.cloud
+frontend/.env.cloud
 
 # Logs
 *.log

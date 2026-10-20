@@ -1,8 +1,14 @@
+import { authHeaders, CLOUD_MODE } from "./cloud";
+
+if (CLOUD_MODE && !import.meta.env.VITE_API_BASE_URL?.startsWith("https://"))
+  throw new Error("Cloud mode requires an HTTPS VITE_API_BASE_URL");
+
 export const BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
 ).replace(/\/$/, "");
 export async function api(path, { timeout = 125000, ...options } = {}) {
   try {
+    const auth = await authHeaders();
     const response = await fetch(`${BASE_URL}${path}`, {
       ...options,
       signal: AbortSignal.timeout(timeout),
@@ -11,6 +17,7 @@ export async function api(path, { timeout = 125000, ...options } = {}) {
           ? { "Content-Type": "application/json" }
           : {}),
         ...options.headers,
+        ...auth,
       },
     });
     const data = await response.json().catch(() => ({}));
@@ -39,7 +46,7 @@ export async function uploadFile(caseId, kind, file) {
 }
 
 export async function downloadReport(caseId) {
-  const response = await fetch(`${BASE_URL}/cases/${caseId}/report`);
+  const response = await fetch(`${BASE_URL}/cases/${caseId}/report`, { headers: await authHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.detail || "Could not download the report.");
@@ -53,4 +60,21 @@ export async function downloadReport(caseId) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function openContractPdf(caseId, page) {
+  const tab = window.open("", "_blank");
+  if (tab) tab.opener = null;
+  try {
+    const response = await fetch(`${BASE_URL}/cases/${caseId}/files/contract/original`,
+      { headers: await authHeaders() });
+    if (!response.ok) throw new Error("Could not open the contract PDF.");
+    const url = URL.createObjectURL(await response.blob());
+    if (tab) tab.location.href = `${url}#page=${page}`;
+    else window.open(`${url}#page=${page}`, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
 }
