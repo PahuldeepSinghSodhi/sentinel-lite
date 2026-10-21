@@ -9,6 +9,7 @@ import numpy as np
 from PyPDF2 import PdfReader
 
 from app.cases import store
+from app.config import SENTINEL_MODE
 from app.embeddings.model import get_embedding_model
 from app.vectorstore.faiss_store import FAISSStore
 
@@ -96,6 +97,9 @@ class Matcher:
     """Load contract vectors once per scan, with no generation model involved."""
 
     def __init__(self, case_id: str, vendors: set[str], roles: set[str]):
+        if SENTINEL_MODE == "cloud":
+            from app.cloud import store as cloud_store
+            cloud_store.ensure_index(case_id, "contract_index")
         self.vendors = {item.casefold() for item in vendors if item}
         self.roles = {item.casefold() for item in roles if item}
         self.cache = {}

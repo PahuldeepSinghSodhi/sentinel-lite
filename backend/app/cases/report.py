@@ -1,30 +1,52 @@
 """PDF export for a complete review case."""
 from html import escape
 from io import BytesIO
+from pathlib import Path
 
+import reportlab
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 
 def _safe(value) -> str:
     return escape(str(value if value is not None else ""))
 
 
+def _register_fonts() -> None:
+    """Use bundled Unicode fonts so citations and calculations render faithfully."""
+    font_dir = Path(reportlab.__file__).resolve().parent / "fonts"
+    for name, filename in (
+        ("SentinelSans", "Vera.ttf"),
+        ("SentinelSans-Bold", "VeraBd.ttf"),
+        ("SentinelSans-Italic", "VeraIt.ttf"),
+        ("SentinelSans-BoldItalic", "VeraBI.ttf"),
+    ):
+        if name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(name, str(font_dir / filename)))
+    pdfmetrics.registerFontFamily(
+        "SentinelSans", normal="SentinelSans", bold="SentinelSans-Bold",
+        italic="SentinelSans-Italic", boldItalic="SentinelSans-BoldItalic",
+    )
+
+
 def make_pdf(case: dict) -> bytes:
+    _register_fonts()
     buffer = BytesIO()
     document = SimpleDocTemplate(buffer, pagesize=(595, 842), rightMargin=46,
                                  leftMargin=46, topMargin=44, bottomMargin=44)
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="CaseTitle", parent=styles["Title"], fontSize=21,
+    styles.add(ParagraphStyle(name="CaseTitle", parent=styles["Title"], fontName="SentinelSans-Bold", fontSize=21,
                               leading=26, textColor=colors.HexColor("#20372e"), alignment=TA_CENTER))
-    styles.add(ParagraphStyle(name="CaseBody", parent=styles["BodyText"], fontSize=9,
+    styles.add(ParagraphStyle(name="CaseBody", parent=styles["BodyText"], fontName="SentinelSans", fontSize=9,
                               leading=13, spaceAfter=5))
-    styles.add(ParagraphStyle(name="CaseSmall", parent=styles["BodyText"], fontSize=8,
+    styles.add(ParagraphStyle(name="CaseSmall", parent=styles["BodyText"], fontName="SentinelSans", fontSize=8,
                               leading=11, textColor=colors.HexColor("#596a5d"), spaceAfter=4))
-    styles.add(ParagraphStyle(name="CaseSection", parent=styles["Heading2"], fontSize=13,
+    styles.add(ParagraphStyle(name="CaseSection", parent=styles["Heading2"], fontName="SentinelSans-Bold", fontSize=13,
                               leading=17, textColor=colors.HexColor("#246c50"), spaceBefore=18,
                               spaceAfter=8))
     story = [Paragraph("Sentinel-Lite Review Report", styles["CaseTitle"]),

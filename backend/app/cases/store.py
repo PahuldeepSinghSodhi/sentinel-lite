@@ -320,3 +320,14 @@ def add_question(case_id: str, question: str, answer: str, sources: list,
                     json.dumps(sources, allow_nan=False), json.dumps(confidence, allow_nan=False),
                     json.dumps(presentation, allow_nan=False) if presentation else None))
     return item_id
+
+
+# Cloud processes use a Postgres/Storage implementation of the same case contract.
+# Local mode never imports cloud dependencies and retains its original data layout.
+from app.config import SENTINEL_MODE  # noqa: E402
+if SENTINEL_MODE == "cloud":
+    from app.cloud import store as _cloud_store  # noqa: E402
+    for _name in ("root", "create_case", "get_case", "list_cases", "save_file", "file_path",
+                  "mark_started", "require_active", "add_scan", "decide", "get_finding",
+                  "save_investigation", "add_question"):
+        globals()[_name] = getattr(_cloud_store, _name)

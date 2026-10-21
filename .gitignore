@@ -32,10 +32,14 @@ backend/data/evaluation_public/
 # Node modules
 frontend/node_modules/
 frontend/dist/
+frontend/.vercel/
+.vercel/
 
 # Environment variables
 .env
 .env.local
+backend/.env.cloud
+frontend/.env.cloud
 
 # Logs
 *.log
