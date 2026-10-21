@@ -5,10 +5,29 @@ The invite-only beta is deployed at
 <https://pahuldeepsinghsodhi--sentinel-cloud-api.us-east.modal.run>. The
 frontend, API health check, database connection, service key, email-link
 request, CORS, and unauthenticated-route rejection were verified on
-2026-10-20. A signed-in upload-to-report walkthrough and second-account
-isolation check are still pending; this is **not** a production-readiness
-claim. Local mode remains the default and keeps local Ollama. Never expose the
-original unauthenticated local API to the public internet.
+2026-10-20. On 2026-10-21, a signed-in synthetic case passed upload,
+preparation, scanning, source opening, review-decision persistence, a
+code-backed anomaly question, and a PDF report containing that question.
+Hosted AI, second-account isolation, and deletion still need live checks;
+this is **not** a production-readiness claim. Local mode remains the default
+and keeps local Ollama. Never expose the original unauthenticated local API
+to the public internet.
+
+## Live beta verification status
+
+- Passed with synthetic repo files: required CSV upload gate, optional TXT
+  upload, background preparation, 12-row scan yielding 9 findings, exact CSV
+  and TXT source previews, saved Investigate decision after refresh, saved
+  duplicate-count answer with both CSV rows, and a three-page PDF with the
+  anomaly and document-intelligence sections. The PDF's Unicode symbols were
+  also checked after a font fix.
+- As expected without a visitor model key, a document-only question asks the
+  reviewer to configure and test an AI provider in Settings. No hosted-model
+  answer or AI investigation has been validated live yet.
+- Pending: a second invited account's cross-owner denial, Google/GitHub OAuth,
+  case deletion, and full hosted-model failure/success tests. Email-link
+  sign-in works. The initial scan took 21,748 ms on this small synthetic case;
+  this is not a general performance benchmark or a manual-time-saving claim.
 
 ## Architecture
 
@@ -76,7 +95,8 @@ key. Scanning itself makes zero AI calls.
 5. Deploy the Vercel build. Confirm the email-link redirect, invite rejection,
    ownership checks, upload, preparation job, scan job, question, citation,
    report, refresh, and deletion with synthetic files. Test a second account
-   against another owner's case ID. Do not share the URL until these pass.
+   against another owner's case ID. Keep the beta invite-only and do not
+   present it as production-ready until the remaining checks pass.
 
 ## API differences from local mode
 

@@ -1,6 +1,6 @@
 # Sentinel-Lite
 
-> The local version remains the default. An opt-in invite-only cloud beta is [live on Vercel](https://sentinel-document-intelligence.vercel.app), with a Modal API and private Supabase data. The signed-in upload-to-report and second-account isolation checks are still pending, so do not treat it as production-ready. See the [cloud deployment guide](docs/cloud-deployment.md) for the strict free-usage gate and verification status.
+> The local version remains the default. An opt-in invite-only cloud beta is [live on Vercel](https://sentinel-document-intelligence.vercel.app), with a Modal API and private Supabase data. A signed-in synthetic upload-to-report walkthrough passed on 2026-10-21; hosted AI, second-account isolation, and deletion checks remain pending, so do not treat it as production-ready. See the [cloud deployment guide](docs/cloud-deployment.md) for the strict free-usage gate and verification status.
 
 Sentinel-Lite is a local procurement review assistant. It flags duplicate transactions, unusual values, and hourly rates above an approved rate card. Reviewers can inspect the exact source location, record a decision, ask questions about uploaded files, and export a PDF case report. AI answers and explanations use a local Ollama model; anomaly detection is rule/statistics based.
 

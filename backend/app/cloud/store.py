@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from fastapi.encoders import jsonable_encoder
 from psycopg.types.json import Jsonb
 
 from app.cloud import db, objects
@@ -31,25 +32,27 @@ def _owner(conn, case_id: str) -> dict:
 
 
 def _case_result(conn, row: dict) -> dict:
-    case_id = row["id"]
+    case_id = str(row["id"])
     files = {item["kind"]: {key: item[key] for key in
               ("kind", "filename", "extension", "size", "uploaded_at")}
              for item in conn.execute("SELECT * FROM case_files WHERE case_id = %s", (case_id,))}
     scans = []
     for scan in conn.execute("SELECT * FROM scans WHERE case_id = %s ORDER BY created_at, id", (case_id,)):
         item = {key: scan[key] for key in ("id", "case_id", "created_at", "transactions_analyzed", "duration_ms")}
+        item["id"] = str(item["id"])
+        item["case_id"] = str(item["case_id"])
         item["findings"] = []
         for finding in conn.execute("SELECT * FROM findings WHERE scan_id = %s ORDER BY ordinal", (scan["id"],)):
             data = dict(finding["data_json"])
             brief = conn.execute("SELECT payload_json FROM investigations WHERE finding_id = %s",
                                  (finding["id"],)).fetchone()
-            data.update(id=finding["id"], decision=finding["decision"], note=finding["note"],
+            data.update(id=str(finding["id"]), decision=finding["decision"], note=finding["note"],
                         decided_at=finding["decided_at"], investigation=brief["payload_json"] if brief else None)
             item["findings"].append(data)
         scans.append(item)
     questions = []
     for question in conn.execute("SELECT * FROM questions WHERE case_id = %s ORDER BY created_at, id", (case_id,)):
-        questions.append({"id": question["id"], "case_id": case_id, "created_at": question["created_at"],
+        questions.append({"id": str(question["id"]), "case_id": case_id, "created_at": question["created_at"],
                           "question": question["question"], "answer": question["answer"],
                           "sources": question["sources_json"], "confidence": question["confidence_json"],
                           "presentation": question["presentation_json"]})
@@ -60,7 +63,7 @@ def _case_result(conn, row: dict) -> dict:
     return {"id": case_id, "name": row["name"], "status": status,
             "created_at": row["created_at"], "started_at": row["started_at"],
             "files": files, "scans": scans, "questions": questions,
-            "job": ({"job_id": recent_job["id"], "kind": recent_job["kind"],
+            "job": ({"job_id": str(recent_job["id"]), "kind": recent_job["kind"],
                      "status": recent_job["status"], "error": recent_job["error"]} if recent_job else None),
             "ready": status == "active", "can_start": status == "draft" and
             {"transactions", "rate_card"}.issubset(files), "can_report": bool(scans or questions)}
@@ -160,6 +163,7 @@ def save_file(case_id: str, kind: str, filename: str, data: bytes) -> dict:
 
 
 def file_path(case_id: str, kind: str) -> Path:
+    case_id = str(case_id)
     with db.connect() as conn:
         _owner(conn, case_id)
         row = conn.execute("SELECT path, extension FROM case_files WHERE case_id = %s AND kind = %s",
@@ -248,7 +252,7 @@ def save_investigation(case_id: str, finding_id: str, payload: dict) -> dict:
         if not valid:
             raise KeyError("Finding not found in this review case")
         conn.execute("""INSERT INTO investigations (finding_id, payload_json) VALUES (%s, %s)
-                        ON CONFLICT (finding_id) DO NOTHING""", (finding_id, Jsonb(payload)))
+                        ON CONFLICT (finding_id) DO NOTHING""", (finding_id, Jsonb(jsonable_encoder(payload))))
         return conn.execute("SELECT payload_json FROM investigations WHERE finding_id = %s",
                             (finding_id,)).fetchone()["payload_json"]
 
@@ -260,8 +264,9 @@ def add_question(case_id: str, question: str, answer: str, sources: list,
         item_id = str(uuid4())
         conn.execute("""INSERT INTO questions (id, case_id, question, answer, sources_json,
                         confidence_json, presentation_json) VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                     (item_id, case_id, question, answer, Jsonb(sources), Jsonb(confidence),
-                      Jsonb(presentation) if presentation else None))
+                     (item_id, case_id, question, answer, Jsonb(jsonable_encoder(sources)),
+                      Jsonb(jsonable_encoder(confidence)),
+                      Jsonb(jsonable_encoder(presentation)) if presentation else None))
     return item_id
 
 

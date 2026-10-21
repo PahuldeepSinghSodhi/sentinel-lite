@@ -155,7 +155,7 @@ class CaseWorkflowTests(unittest.TestCase):
         self.assertEqual(exported.status_code, 200)
         pages = PdfReader(io.BytesIO(exported.content)).pages
         text = "\n".join(page.extract_text() for page in pages)
-        for expected in ("Anomaly review", "Document intelligence", "VP approved", "Question 1", "rates.csv"):
+        for expected in ("Anomaly review", "Document intelligence", "VP approved", "Question 1", "rates.csv", "×", "·"):
             self.assertIn(expected, text)
 
     def test_unlisted_vendor_is_flagged(self):

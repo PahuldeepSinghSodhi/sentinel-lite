@@ -2,11 +2,14 @@
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
-from app.cloud import auth, jobs, objects, providers, store
+from app.cloud import auth, jobs, objects, providers, store, worker
 
 
 class CloudUnitTests(unittest.TestCase):
@@ -70,6 +73,46 @@ class CloudUnitTests(unittest.TestCase):
         self.assertEqual(conn.execute.call_args.args[1],
                          ("11111111-1111-4111-8111-111111111111", "user-1"))
 
+    def test_cloud_file_path_accepts_database_uuid(self):
+        case_id = uuid4()
+
+        @contextmanager
+        def fake_db():
+            conn = Mock()
+            conn.execute.return_value.fetchone.return_value = {
+                "path": "private/test/transactions.csv", "extension": ".csv"
+            }
+            yield conn
+
+        with tempfile.TemporaryDirectory() as scratch, patch(
+            "app.cloud.store.db.connect", fake_db
+        ), patch("app.cloud.store._owner"), patch(
+            "app.cloud.store.objects.get", return_value=b"vendor_name\nApex\n"
+        ), patch("app.cloud.store.root", return_value=Path(scratch)):
+            target = store.file_path(case_id, "transactions")
+            self.assertEqual(target.read_bytes(), b"vendor_name\nApex\n")
+            self.assertEqual(target.parent.name, str(case_id))
+
+    def test_cloud_case_result_normalizes_database_ids(self):
+        case_id, scan_id, finding_id = uuid4(), uuid4(), uuid4()
+        conn = Mock()
+        conn.execute.side_effect = [
+            [],
+            [{"id": scan_id, "case_id": case_id, "created_at": "now",
+              "transactions_analyzed": 1, "duration_ms": 1}],
+            [{"id": finding_id, "data_json": {"type": "duplicate"},
+              "decision": None, "note": None, "decided_at": None}],
+            Mock(fetchone=Mock(return_value=None)),
+            [],
+            Mock(fetchone=Mock(return_value=None)),
+        ]
+        result = store._case_result(conn, {"id": case_id, "name": "Synthetic",
+                                           "status": "active", "created_at": "now",
+                                           "started_at": "now"})
+        self.assertEqual(result["id"], str(case_id))
+        self.assertEqual(result["scans"][0]["id"], str(scan_id))
+        self.assertEqual(result["scans"][0]["findings"][0]["id"], str(finding_id))
+
     def test_worker_claim_reaps_exhausted_lease_and_uses_skip_locked(self):
         @contextmanager
         def fake_db():
@@ -85,6 +128,36 @@ class CloudUnitTests(unittest.TestCase):
             self.assertIn("LIMIT 1 FOR UPDATE SKIP LOCKED", conn.execute.call_args_list[2].args[0])
         with patch("app.cloud.jobs.db.connect", fake_db):
             self.assertIsNone(jobs.claim())
+
+    def test_worker_normalizes_database_uuid_for_case_paths(self):
+        case_id, owner_id, job_id = uuid4(), uuid4(), uuid4()
+        job = {"id": job_id, "case_id": case_id, "owner_id": owner_id,
+               "kind": "start", "attempts": 1}
+
+        @contextmanager
+        def fake_db():
+            conn = Mock()
+            conn.execute.side_effect = [
+                Mock(fetchone=Mock(return_value={"email": "reviewer@example.com"})),
+                Mock(fetchone=Mock(return_value={"invited": True})),
+            ]
+            yield conn
+
+        with tempfile.TemporaryDirectory() as scratch, patch(
+            "app.cloud.worker.jobs.claim", return_value=job
+        ), patch("app.cloud.worker.db.connect", fake_db), patch(
+            "app.cloud.worker.sources.build_index"
+        ) as build, patch("app.cloud.worker.store.sync_artifacts") as sync, patch(
+            "app.cloud.worker.store.mark_started"
+        ) as started, patch("app.cloud.worker.jobs.finish") as finish, patch(
+            "app.cloud.worker.jobs.fail"
+        ) as fail, patch("app.cloud.worker.store.root", return_value=Path(scratch)):
+            self.assertTrue(worker.run_once())
+        build.assert_called_once_with(str(case_id))
+        sync.assert_called_once_with(str(case_id))
+        started.assert_called_once_with(str(case_id))
+        finish.assert_called_once_with(job_id, None)
+        fail.assert_not_called()
 
     def test_cloud_mode_blocks_legacy_and_requires_session(self):
         code = """from fastapi.testclient import TestClient

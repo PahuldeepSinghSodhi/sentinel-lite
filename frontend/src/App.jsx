@@ -78,10 +78,22 @@ export default function App({ cloudUser, onSignOut }) {
   }, [refreshCases]);
   useEffect(() => {
     if (!CLOUD_MODE || !review?.id || !["queued", "running"].includes(review.job?.status)) return;
-    const timer = window.setInterval(() => loadCase(review.id).then((item) => {
-      if (item.job?.status === "completed") refreshCases();
-    }).catch((err) => setError(err.message)), 2500);
-    return () => window.clearInterval(timer);
+    let stopped = false;
+    let timer;
+    const caseId = review.id;
+    async function poll() {
+      try {
+        const item = await loadCase(caseId);
+        if (!stopped && item.job?.status === "completed") await refreshCases();
+      } catch (err) {
+        if (!stopped) setError(err.message);
+      } finally {
+        // Wait for the previous request to finish before scheduling another.
+        if (!stopped) timer = window.setTimeout(poll, 5000);
+      }
+    }
+    timer = window.setTimeout(poll, 5000);
+    return () => { stopped = true; window.clearTimeout(timer); };
   }, [review?.id, review?.job?.status, loadCase, refreshCases]);
   async function createCase(demo = false) {
     setBusy(true);

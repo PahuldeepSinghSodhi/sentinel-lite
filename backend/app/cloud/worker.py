@@ -3,6 +3,8 @@ import logging
 import shutil
 import threading
 import time
+import traceback
+from pathlib import Path
 from uuid import UUID
 
 from app.cloud import db, jobs, store
@@ -36,7 +38,9 @@ def run_once() -> bool:
         if not invited:
             raise PermissionError("Owner invitation revoked")
         with user_context({"id": job["owner_id"], "email": owner["email"], "role": "reviewer"}, job["id"]):
-            case_id = job["case_id"]
+            # psycopg returns UUID objects for job rows, while case file paths
+            # and FAISS scratch paths require a string component.
+            case_id = str(job["case_id"])
             if job["kind"] == "start":
                 sources.build_index(case_id)
                 store.sync_artifacts(case_id)
@@ -48,8 +52,11 @@ def run_once() -> bool:
         jobs.finish(job["id"], result_id)
         return True
     except Exception as exc:
-        # Do not log source text, credentials, request bodies, or internal DB URLs.
-        log.error("Job %s failed (%s)", job["id"], type(exc).__name__)
+        # Log only the failure location, never exception text: exception messages
+        # may contain source excerpts, credentials, or database connection data.
+        frame = traceback.extract_tb(exc.__traceback__)[-1]
+        log.error("Job %s failed (%s at %s:%s)", job["id"],
+                  type(exc).__name__, Path(frame.filename).name, frame.lineno)
         jobs.fail(job)
         return True
     finally:

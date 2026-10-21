@@ -33,7 +33,9 @@ export async function api(path, { timeout = 125000, ...options } = {}) {
       throw new Error("This request took too long. Please try again.");
     if (error instanceof TypeError)
       throw new Error(
-        "Unable to reach the backend. Start the Sentinel backend and try again.",
+        CLOUD_MODE
+          ? "Could not connect to the cloud API. Please retry; if it persists, contact the app owner."
+          : "Unable to reach the backend. Start the Sentinel backend and try again.",
       );
     throw error;
   }
