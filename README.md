@@ -1,8 +1,26 @@
 # Sentinel-Lite
 
-> The local version remains the default. An opt-in invite-only cloud beta is [live on Vercel](https://sentinel-document-intelligence.vercel.app), with a Modal API and private Supabase data. A signed-in synthetic upload-to-report walkthrough passed on 2026-10-21; hosted AI, second-account isolation, and deletion checks remain pending, so do not treat it as production-ready. See the [cloud deployment guide](docs/cloud-deployment.md) for the strict free-usage gate and verification status.
+**Evidence-backed procurement review, from uploaded files to a documented decision.** Sentinel checks transactions against an approved rate card, identifies possible duplicates and unusual charges, and lets a reviewer inspect sources, record decisions, ask document questions, and export a case report. The anomaly scan is deterministic; an AI model is called only for a requested explanation or document answer.
 
-Sentinel-Lite is a local procurement review assistant. It flags duplicate transactions, unusual values, and hourly rates above an approved rate card. Reviewers can inspect the exact source location, record a decision, ask questions about uploaded files, and export a PDF case report. AI answers and explanations use a local Ollama model; anomaly detection is rule/statistics based.
+[Try the invite-only cloud beta](https://sentinel-document-intelligence.vercel.app) · [Cloud architecture and deployment](docs/cloud-deployment.md) · [Portfolio and résumé wording](docs/portfolio-notes.md)
+
+The local version remains the default and uses SQLite, local files, and Ollama. The separately configured cloud beta uses Vercel, Modal, and Supabase. A signed-in synthetic upload-to-report walkthrough passed on 2026-10-21, but hosted AI, second-account isolation, OAuth providers, and deletion still need live verification. **This is a portfolio beta, not a production-ready procurement or security service.**
+
+## Why this exists
+
+Procurement reviewers often have to reconcile transaction rows, approved prices, and contract language across separate files. Sentinel brings those sources into one case and makes each flag reviewable: the triggering rule, calculation, CSV row and columns, rate-card entry, and any suggested contract context are visible before the reviewer decides what to do. A suggested clause is explicitly not a confirmed contractual breach, and the rate card remains authoritative for numerical discrepancies.
+
+## Architecture at a glance
+
+| Responsibility | Local mode | Invite-only cloud beta |
+| --- | --- | --- |
+| Interface | React/Vite on the user's computer | React/Vite on Vercel |
+| API and processing | Local FastAPI process | FastAPI API and on-demand worker on Modal |
+| Identity and case history | Single-user SQLite | Supabase Auth and Postgres; API checks invitation and case ownership |
+| Documents and indexes | Local files and per-case FAISS indexes | Private Supabase Storage; temporary worker scratch space |
+| AI on request | Local Ollama | User-selected supported provider; key kept server-side in Supabase Vault |
+
+In cloud mode, Start review and Scan create durable Postgres jobs. The UI can show queued, running, completed, or failed status after a refresh; a worker prepares documents and scans transactions, with retry and recovery paths. Scanning makes **zero model calls**. See the [deployment runbook](docs/cloud-deployment.md) for routes, security boundaries, quotas, and operational trade-offs. Cloud mode does not upload existing local cases automatically.
 
 ## What a review looks like
 
@@ -16,9 +34,9 @@ After a review starts, its source files are locked to preserve evidence. In **So
 
 New scan-backed answers are displayed as a short summary, exact counts, vendor groups, and expandable finding details. Their plain-text answer and source citations remain saved for the PDF report. Older saved answers remain available in a collapsed detail view; ask again to get the new presentation.
 
-Each case has separate files, a FAISS index, SQLite records, scan history, decisions, and question history under `backend/data/cases/` (ignored by Git). A citation identifies a PDF page, TXT line range, or CSV row and columns. These are locations of retrieved context, not a guarantee that every claim in an AI answer is correct. Scanned image PDFs need OCR and are rejected in this version.
+In local mode, each case has separate files, a FAISS index, SQLite records, scan history, decisions, and question history under `backend/data/cases/` (ignored by Git). Cloud mode keeps the same case boundaries in Postgres and private Storage. A citation identifies a PDF page, TXT line range, or CSV row and columns. These are locations of retrieved context, not a guarantee that every claim in an AI answer is correct. Scanned image PDFs need OCR and are rejected in this version.
 
-Investigation evidence appears immediately without a model call. Generating its **What happened / Why it matters / Next action** brief uses at most one local Ollama call, saves the result in SQLite, and reuses it on repeat clicks or refresh. Only supplied citation IDs are displayed; a cited source still needs reviewer verification. PDF links open the locally uploaded original at the cited page when the browser supports page navigation, with extracted page text as a fallback. TXT links show numbered lines, and CSV links emphasize cited columns. PDF text highlighting is not implemented. The downloaded report includes the saved brief and its source locations. **Ask documents is unchanged** by this investigation feature.
+Investigation evidence appears immediately without a model call. Generating its **What happened / Why it matters / Next action** brief uses at most one model call, saves the result, and reuses it on repeat clicks or refresh. Local mode uses Ollama and SQLite; cloud mode uses the configured provider and Postgres. Only supplied citation IDs are displayed; a cited source still needs reviewer verification. PDF links open the uploaded original at the cited page when the browser supports page navigation, with extracted page text as a fallback. TXT links show numbered lines, and CSV links emphasize cited columns. PDF text highlighting is not implemented. The downloaded report includes the saved brief and its source locations. **Ask documents is unchanged** by this investigation feature.
 
 Clause matching uses a contract-only FAISS index plus rule-topic checks and available explicit vendor/role or ISO-format effective-date restrictions; the rate card remains the numerical authority. Unlabelled names, unusual date wording, or ambiguous clauses may still be misread, so a suggestion is never presented as a confirmed contractual breach. If nothing passes the checks, the finding says **No clause suggested**.
 
@@ -49,7 +67,7 @@ For Docker, start Ollama on the host and run `docker compose up --build` at the 
 
 ## Upload contract and case API
 
-Transaction CSV needs `vendor_name`, `role_level`, and numeric `hourly_rate`. Rate-card CSV needs `vendor_name`, `role_level`, and positive numeric `approved_rate`; each vendor/role pair must be unique. Extra columns such as `hours`, `total_amount`, `transaction_id`, and `invoice_ref` are supported. Files must be UTF-8 CSV/TXT or text-based PDF, at most 10 MB each.
+Transaction CSV needs `vendor_name`, `role_level`, and numeric `hourly_rate`. Rate-card CSV needs `vendor_name`, `role_level`, and positive numeric `approved_rate`; each vendor/role pair must be unique. Extra columns such as `hours`, `total_amount`, `transaction_id`, and `invoice_ref` are supported. Files must be UTF-8 CSV/TXT or text-based PDF, at most 10 MB each. The routes below describe local mode; cloud case routes require a verified bearer token, and Start review and Scan return a job ID. See the [cloud API differences](docs/cloud-deployment.md#api-differences-from-local-mode).
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -68,7 +86,7 @@ Transaction CSV needs `vendor_name`, `role_level`, and numeric `hourly_rate`. Ra
 | `GET` | `/cases/{id}/files/contract/original` | Open the locally stored original PDF, case-scoped |
 | `GET` | `/cases/{id}/report` | PDF with all scans and questions for one case |
 
-Legacy sample endpoints remain available for compatibility: `POST /query`, `/reason`, `/ingest`, `/anomalies`, and `/explain_anomaly`. The app UI uses the case-scoped endpoints.
+Legacy sample endpoints remain available **in local mode** for compatibility: `POST /query`, `/reason`, `/ingest`, `/anomalies`, and `/explain_anomaly`. They are unavailable in cloud mode. The app UI uses the case-scoped endpoints.
 
 ## Evaluation and limitations
 
@@ -77,6 +95,12 @@ Run `python -m unittest tests.test_cases tests.test_benchmark -v` from `backend/
 On the initial generated benchmark, the detector found 9 labelled type/row pairs with 3 false positives: **75% precision, 100% recall, 85.7% F1**. All three false-positive type/row flags arise from the single approved exception at transaction row index 230, demonstrating why reviewer decisions matter. These are controlled synthetic results and do not establish real-world accuracy or time savings. Scan duration printed by the script covers anomaly detection and scoring only; it excludes uploads, embedding, LLM generation, and human review. The original 20-question RAG harness remains in `backend/tests/test_evaluation.py`; CI runs retrieval-only checks because Ollama is not present on the runner. Full LLM evaluation must run locally.
 
 The default local mode is a single-user prototype without login or OCR. The opt-in cloud mode adds account ownership and private storage, but is not a production security certification. The LLM can still be wrong; reviewers should verify citations and decisions.
+
+### Cloud beta verification (2026-10-21)
+
+One signed-in synthetic case passed required CSV upload validation, optional TXT upload, background preparation, scanning, CSV/TXT source opening, a saved review decision after refresh, a code-backed duplicate question, and PDF export. The scan processed **12 rows and produced 9 findings in 21,748 ms**; this is a single hosted walkthrough, not a latency benchmark. The duplicate answer identified **one group, two rows, and one extra copy** with source-row links. The exported PDF included both anomaly-review and document-intelligence sections.
+
+The last recorded verification passed **42 backend tests**, frontend lint, and frontend build. Email-link sign-in works. A document-only question correctly asks for provider setup when no key is configured; successful hosted-provider answers and AI investigations are **not yet verified live**. Second-account ownership denial, Google/GitHub OAuth, and deletion also need live checks. No controlled manual-review study has established time savings. See the [runbook's verification status](docs/cloud-deployment.md#live-beta-verification-status).
 
 ### Contract-clause evaluation
 
@@ -88,6 +112,6 @@ The current preliminary run has **10 labelled scenarios across 4 PDFs**: 4 appli
 
 Deferred candidates, **not implemented**: exact-plus-semantic identifier retrieval and a small local ML reranker trained from labelled mistakes. No LangChain dependency is used.
 
-## Stack
+## Stack and project status
 
-FastAPI, Pandas/SciPy, sentence-transformers (`all-MiniLM-L6-v2`), FAISS, Ollama (`llama3.1`), SQLite, ReportLab, React, and Vite. The retrieval pipeline is implemented directly and does **not** use LangChain.
+Core: Python, FastAPI, Pandas/SciPy, sentence-transformers (`all-MiniLM-L6-v2`), FAISS, ReportLab, React, and Vite. Local mode: SQLite and Ollama (`llama3.1`). Cloud beta: Supabase Auth/Postgres/private Storage/Vault, Modal API and worker, and Vercel hosting. The retrieval pipeline is implemented directly and does **not** use LangChain; the project does not implement blockchain. The current cloud work is in an [open draft pull request](https://github.com/PahuldeepSinghSodhi/sentinel-lite/pull/1), not yet merged into `master`.
