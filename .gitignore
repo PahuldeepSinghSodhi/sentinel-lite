@@ -48,3 +48,9 @@ frontend/.env.cloud
 # Model cache (large files)
 *.bin
 *.onnx
+
+# Recovery data and keys must never be committed
+recovery-private/
+*.key.dpapi
+*.recovery-key
+*.enc

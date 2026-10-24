@@ -1,5 +1,9 @@
 # Invite-only cloud beta: Modal deployment runbook
 
+The AWS migration's recoverable starting point, backup commands, restore proof,
+current configuration, and unresolved checks are recorded in
+[Stage 0 recovery baseline](stage0-recovery.md). Stage 0 does not change this deployment.
+
 The invite-only beta is deployed at
 <https://sentinel-document-intelligence.vercel.app>. Its API is hosted at
 <https://pahuldeepsinghsodhi--sentinel-cloud-api.us-east.modal.run>. The
