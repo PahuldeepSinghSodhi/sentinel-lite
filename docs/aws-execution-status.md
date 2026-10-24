@@ -16,7 +16,7 @@ promotion disabled, and the existing production deployment was verified unchange
 | AWS preview | Real email-code login, ownership denial, direct uploads, indexing/scans, saved deterministic answers, decisions, signed PDFs and reports |
 | Capacity | Three 2,400-row scans while another account read metadata; no container OOM/restart observed |
 | Browser | Real AWS + installed Chrome: three tab returns and native refresh preserved case/draft; one `/me` initially and another after reload |
-| Operations | Encrypted daily backups, isolated restore comparison, protected off-account copy, schedules, 11 alarms, confirmed alert email, spending/credit alerts |
+| Operations | Encrypted daily backups, isolated restore comparison, protected off-account copy, schedules, 12 alarms, confirmed alert email, spending/credit alerts |
 | Checks | 37 frontend tests, lint/build; cloud/AWS tests, case/benchmark tests; nine recovery tests; controlled Chrome outage/revocation/in-flight-operation smoke |
 
 Both source snapshots restored into isolated local PostgreSQL. An AWS recovery

@@ -48,7 +48,7 @@ by matching a client-supplied email.
 - API/report/preview failures use the account/token-aware access gate. Ordinary
   resource denials do not revoke the workspace; outages preserve it.
 - Seven-day logs omit tokens, keys, source documents and prompts. Five-minute
-  checks cover worker/queue/backup age, failures, memory/disk, credits and Free
+  checks probe the public API path and cover worker/queue/backup age, failures, memory/disk, credits and Free
   plan status. The daily recovery job uses a separate private encrypted bucket.
 - The scheduler can invoke only its fixed SSM documents on the dedicated host.
   Bootstrap-secret reads and image-push grants are temporary operator access.

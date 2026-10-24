@@ -74,7 +74,7 @@ def main():
             Statistic="Maximum" if comparison=="GreaterThanThreshold" else "Minimum", Period=300,
             EvaluationPeriods=2 if name=="WorkerAgeSeconds" else 1, Threshold=threshold, ComparisonOperator=comparison,
             TreatMissingData=missing, AlarmActions=[topic], OKActions=[topic])
-    for name,threshold in (("RemainingCreditsUSD",20),("FreePlanActive",1)):
+    for name,threshold in (("RemainingCreditsUSD",20),("FreePlanActive",1),("APIReady",1)):
         cw.put_metric_alarm(AlarmName="Sentinel-"+name,Namespace="Sentinel",MetricName=name,Statistic="Minimum",Period=300,
             EvaluationPeriods=1,Threshold=threshold,ComparisonOperator="LessThanThreshold",TreatMissingData="breaching",AlarmActions=[topic])
     cw.put_metric_alarm(AlarmName="Sentinel-EC2-status", Namespace="AWS/EC2", MetricName="StatusCheckFailed",
@@ -145,7 +145,7 @@ def main():
         finally:
             if args.run=="restore-drill":
                 iam.delete_role_policy(RoleName="SentinelRuntime",PolicyName="SentinelTemporaryRestore")
-    print(json.dumps({"backup_bucket":bucket,"scheduled":state["schedules"],"alarms":11}))
+    print(json.dumps({"backup_bucket":bucket,"scheduled":state["schedules"],"alarms":12}))
 
 
 if __name__ == "__main__":

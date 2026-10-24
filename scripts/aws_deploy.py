@@ -36,6 +36,7 @@ def main():
     if state.get("backup_bucket"):
         env.update(SENTINEL_BACKUP_BUCKET=state["backup_bucket"], SENTINEL_BACKUP_SECRET_ID=state["backup_secret"])
     env["SENTINEL_READ_ONLY"]="true" if state.get("aws_read_only",False) else "false"
+    env["SENTINEL_API_HEALTH_URL"]=state["api_url"]+"/health"
     content="\n".join(f"{name}={value}" for name,value in env.items())+"\n"
     # The file contains references and public configuration only, no secret values.
     encoded=base64.b64encode(content.encode()).decode()

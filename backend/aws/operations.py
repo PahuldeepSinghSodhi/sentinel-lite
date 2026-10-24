@@ -173,6 +173,12 @@ def restore_drill(prefix=None):
 
 
 def monitor():
+    import requests
+    try:
+        ready=requests.get(value("SENTINEL_API_HEALTH_URL"),timeout=10).status_code==200
+    except requests.RequestException:
+        ready=False
+    metric("APIReady",int(ready))
     with db.connect() as conn:
         worker = conn.execute("SELECT extract(epoch FROM now()-updated_at) AS age FROM worker_status WHERE name='primary' AND ready").fetchone()
         metric("WorkerAgeSeconds", float(worker["age"]) if worker else 86400, "Seconds")
