@@ -107,15 +107,15 @@ if SENTINEL_MODE == "cloud":
 
     @app.middleware("http")
     async def cloud_gate(request: Request, call_next):
-        from app.cloud.auth import authenticate, user_context
+        from app.cloud.auth import AccessError, authenticate, user_context
         if request.method == "OPTIONS" or request.url.path in {"/", "/health", "/openapi.json", "/docs"}:
             return await call_next(request)
         if not request.url.path.startswith(("/cases", "/jobs", "/me", "/admin")):
             return Response(status_code=404)
         try:
             user = authenticate(request.headers.get("authorization", ""))
-        except PermissionError as exc:
-            return JSONResponse({"detail": str(exc)}, status_code=401)
+        except AccessError as exc:
+            return JSONResponse({"detail": str(exc), "code": exc.code}, status_code=exc.status_code)
         with user_context(user):
             return await call_next(request)
 

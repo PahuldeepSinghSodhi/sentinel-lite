@@ -32,6 +32,7 @@ backend/data/evaluation_public/
 # Node modules
 frontend/node_modules/
 frontend/dist/
+frontend/test-artifacts/
 frontend/.vercel/
 .vercel/
 

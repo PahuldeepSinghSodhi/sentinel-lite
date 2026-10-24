@@ -1,38 +1,92 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Layers3, LockKeyhole, ShieldCheck } from "lucide-react";
 import { api } from "./api";
 import { supabase } from "./cloud";
 import Workspace from "./App";
+import { accountIdentity, subscribeAccessFailure } from "./access";
 
 export default function CloudShell() {
   const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
+  const [approval, setApproval] = useState(null);
+  const [epoch, setEpoch] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const latest = useRef({ session: null, epoch: 0, denial: 0 });
+  const pending = useRef(null);
+  const identity = accountIdentity(session);
+  const verificationKey = JSON.stringify([identity, epoch, attempt]);
+  const user = approval?.key === verificationKey ? approval.user : null;
   const googleEnabled = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
   const githubEnabled = import.meta.env.VITE_ENABLE_GITHUB_AUTH === "true";
 
   useEffect(() => {
     let live = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (live) { setSession(data.session); setLoading(false); }
+    const unsubscribeFailure = subscribeAccessFailure(({ error: issue, session: origin }) => {
+      const current = latest.current.session;
+      if (!live || accountIdentity(current) !== accountIdentity(origin)
+          || current?.access_token !== origin.access_token) return;
+      latest.current.denial += 1;
+      setApproval(null);
+      setError(issue.message);
     });
+    // INITIAL_SESSION restores the session; no competing getSession initialization.
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next); setUser(null); setError(""); setLoading(false);
+      if (!live) return;
+      if (accountIdentity(latest.current.session) !== accountIdentity(next)) {
+        latest.current.epoch += 1;
+        setApproval(null);
+        setError("");
+        setEmailSent(false);
+      }
+      latest.current.session = next;
+      setEpoch(latest.current.epoch);
+      setSession(next);
+      setLoading(false);
     });
-    return () => { live = false; listener.subscription.unsubscribe(); };
+    return () => { live = false; unsubscribeFailure(); listener.subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (!identity) return;
     let live = true;
-    api("/me").then((result) => { if (live) setUser(result); })
-      .catch((err) => { if (live) setError(err.message); });
+    const denial = latest.current.denial;
+    const isCurrent = () => latest.current.epoch === epoch;
+    // Reuse the same attempt during Strict Mode's effect replay.
+    if (pending.current?.key !== verificationKey) {
+      const promise = Promise.resolve().then(async () => {
+        while (isCurrent()) {
+          const origin = latest.current.session;
+          try {
+            return await api("/me", { accessSession: origin });
+          } catch (issue) {
+            // A refresh may complete while the first verification is in flight.
+            if (isCurrent() && issue.code === "session_invalid"
+                && origin.access_token !== latest.current.session?.access_token) continue;
+            throw issue;
+          }
+        }
+      });
+      pending.current = { key: verificationKey, promise };
+    }
+    pending.current.promise.then((result) => {
+      if (live && isCurrent() && latest.current.denial === denial && result) {
+        setApproval({ key: verificationKey, user: result });
+        setError("");
+      }
+    }).catch((issue) => {
+      if (live && isCurrent() && latest.current.denial === denial) setError(issue.message);
+    });
     return () => { live = false; };
-  }, [session]);
+  }, [identity, epoch, attempt, verificationKey]);
+
+  function retryVerification() {
+    setError("");
+    setAttempt((previous) => previous + 1);
+  }
 
   async function signIn(provider) {
     setError("");
@@ -55,7 +109,7 @@ export default function CloudShell() {
     else setEmailSent(true);
   }
 
-  if (user) return <Workspace cloudUser={user} onSignOut={() => supabase.auth.signOut()} />;
+  if (user) return <Workspace key={identity} cloudUser={user} onSignOut={() => supabase.auth.signOut()} />;
   return <div className="cloud-entry"><div className="cloud-entry-card">
     <span className="cloud-logo"><Layers3 size={24} /> sentinel<span>.</span></span>
     <p className="eyebrow">PRIVATE PROCUREMENT WORKSPACE</p>
@@ -63,6 +117,7 @@ export default function CloudShell() {
     <p className="cloud-lead">Upload your sources, investigate the exceptions, and keep a record of every decision.</p>
     {loading || (session && !error) ? <p role="status">Checking your invitation…</p> :
       session ? <><div className="notice error" role="alert">{error}</div>
+        <button className="button primary" onClick={retryVerification}>Retry verification</button>
         <button className="button secondary" onClick={() => supabase.auth.signOut()}>Sign out and try another account</button></> :
       <><div className="cloud-signin">
         {emailSent ? <p role="status">Check your inbox for a sign-in link. Open it on this device to enter your workspace.</p> :

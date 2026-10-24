@@ -110,6 +110,48 @@ also require a bearer token. Legacy unauthenticated `/query`, `/reason`,
 
 ## Security, resource limits, and verification
 
+### Session continuity rollout
+
+Deployed backend first, then the frontend, on 2026-10-22. The existing
+`sentinel-document-intelligence.vercel.app` alias serves the updated cloud
+bundle. Live checks passed: `/health` returned 200/ready, missing and invalid
+bearer tokens returned 401/`session_invalid`, CORS allowed the frontend origin,
+and a fresh browser reached the invited-email sign-in form. Signed-in continuity
+was checked in installed Chrome against synthetic services before deployment;
+the deployed site still needs that check with a real invited session.
+
+The pre-deployment Modal dashboard showed Starter, $29.95 remaining credits,
+a $4 usage limit, and the default $0 spend limit; Vercel reported Hobby.
+These are deployment-time observations, not guarantees of future usage.
+The root `.vercelignore` excludes backend credentials, case files, environment
+files, logs, and generated frontend assets from the Vercel source upload.
+
+Deploy the backend before the frontend for the session continuity update. The
+cloud access gate returns `{ "detail": "...", "code": "..." }` with
+`session_invalid` (401), `account_unverified` or `invite_required` (403), and
+`auth_unavailable` (503). Ordinary resource permission errors remain separate.
+No database migration or new environment variables are required.
+
+The browser verifies `/me` once per page load and account identity (user ID and
+normalized email). Approval stays in memory only. Same-account auth events and
+token refreshes preserve the mounted workspace; sign-out or account changes
+clear it. The server still checks invitations on every protected request, so a
+revocation takes effect on the next request. Outages preserve an already open
+workspace and surface a retryable request error. Initial verification errors
+offer an explicit retry; returning to a browser tab does not restart the check.
+
+Before release, run `npm test`, `npm run lint`, and `npm run build` in
+`frontend/`, plus `python -m unittest tests.test_cloud` in `backend/`. With an
+invited test account, select a case, open Ask documents, enter an unsent
+question, and switch to another Chrome tab and back repeatedly. Confirm the
+question and section remain and no extra `/me` requests appear in Network.
+`npm run test:browser` automates this against installed Chrome and synthetic
+services, including token refresh, an in-flight question, outage, and revocation.
+It uses a temporary browser profile and leaves real accounts untouched. On
+machines with Chrome installed elsewhere, set `CHROME_PATH` to its executable.
+Also verify sign-out, account switching, and invitation revocation. Compare
+401/403/503 responses after deployment; do not log bearer tokens or private data.
+
 - Files must be UTF-8 CSV/TXT or text-extractable PDF, at most 10 MB each.
   Private Supabase Storage holds source files, indexes, and reports. The
   service-role key and Postgres URL exist only in Modal Secrets, never Vercel

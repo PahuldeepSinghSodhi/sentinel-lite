@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight, BookOpen, ChevronRight, Download, FileStack,
-  Layers3, MessageSquareText, Plus, ShieldCheck, ShieldAlert, Settings2, Trash2,
+  Layers3, Loader2, MessageSquareText, Plus, ShieldCheck, ShieldAlert, Settings2, Trash2,
 } from "lucide-react";
 import QueryTab from "./components/QueryTab";
 import AnomalyTab from "./components/AnomalyTab";
@@ -9,6 +9,8 @@ import DocumentsTab from "./components/DocumentsTab";
 import { api, downloadReport } from "./api";
 import { CLOUD_MODE } from "./cloud";
 import CloudSettings from "./CloudSettings";
+import WorkspaceSkeleton from "./components/WorkspaceSkeleton";
+import { useRequestActivity } from "./activity";
 import "./App.css";
 import "./refinements.css";
 
@@ -28,6 +30,15 @@ export default function App({ cloudUser, onSignOut }) {
   const [connection, setConnection] = useState("checking");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [workspaceState, setWorkspaceState] = useState("loading");
+  const [initialAttempt, setInitialAttempt] = useState(0);
+  const [caseLoading, setCaseLoading] = useState(false);
+  const [failedCase, setFailedCase] = useState(null);
+  const selectedCase = useRef(null);
+  const requestActivity = useRequestActivity();
+  const contentLoading = workspaceState === "loading" || caseLoading;
+  const controlsDisabled = workspaceState !== "ready" || caseLoading || busy;
+  const loadFailed = workspaceState === "error" || failedCase !== null;
   const caseSwitcher = useRef(null);
   const caseSelect = useRef(null);
   const newCaseButton = useRef(null);
@@ -44,47 +55,81 @@ export default function App({ cloudUser, onSignOut }) {
     (caseSelect.current || newCaseButton.current)?.focus({ preventScroll: true });
   }
 
-  const loadCase = useCallback(async (id) => {
-    const data = await api(`/cases/${id}`);
+  const loadCase = useCallback(async (id, { select = false, silent = false } = {}) => {
+    if (select) selectedCase.current = id;
+    const data = await api(`/cases/${id}`, { silent });
+    // A background response for the previous case must not replace the selected one.
+    if (selectedCase.current !== id) return data;
     setReview(data);
     localStorage.setItem(savedCaseKey, id);
     return data;
   }, [savedCaseKey]);
-  const refreshCases = useCallback(async () => {
+  const refreshCases = useCallback(async (preferredId) => {
     const items = await api("/cases");
     setCases(items);
-    const saved = localStorage.getItem(savedCaseKey);
+    const saved = preferredId || localStorage.getItem(savedCaseKey);
     const selected = items.find((item) => item.id === saved) || items[0];
-    if (selected) await loadCase(selected.id);
-    else setReview(null);
+    if (selected) await loadCase(selected.id, { select: true });
+    else { selectedCase.current = null; setReview(null); }
   }, [loadCase, savedCaseKey]);
   useEffect(() => {
     let mounted = true;
     async function initialize() {
+      setWorkspaceState("loading");
+      setConnection("checking");
+      setError("");
+      let connected = false;
       try {
         await api("/", { timeout: 5000 });
         if (!mounted) return;
+        connected = true;
         setConnection("connected");
         await refreshCases();
+        if (mounted) setWorkspaceState("ready");
       } catch (err) {
         if (mounted) {
-          setConnection("offline");
+          if (!connected) setConnection("offline");
+          setWorkspaceState("error");
           setError(err.message);
         }
       }
     }
     initialize();
     return () => { mounted = false; };
-  }, [refreshCases]);
+  }, [refreshCases, initialAttempt]);
+
+  async function selectCase(id) {
+    setCaseLoading(true);
+    setFailedCase(null);
+    setError("");
+    try {
+      const selected = await loadCase(id, { select: true });
+      if (!selected.ready) navigateTo("documents");
+    } catch (err) {
+      selectedCase.current = review?.id || null;
+      setFailedCase(id);
+      setError(err.message);
+    } finally { setCaseLoading(false); }
+  }
+
+  function retryLoading() {
+    if (failedCase) selectCase(failedCase);
+    else setInitialAttempt((previous) => previous + 1);
+  }
   useEffect(() => {
     if (!CLOUD_MODE || !review?.id || !["queued", "running"].includes(review.job?.status)) return;
     let stopped = false;
     let timer;
     const caseId = review.id;
     async function poll() {
+      if (stopped) return;
+      if (selectedCase.current !== caseId) {
+        timer = window.setTimeout(poll, 5000);
+        return;
+      }
       try {
-        const item = await loadCase(caseId);
-        if (!stopped && item.job?.status === "completed") await refreshCases();
+        const item = await loadCase(caseId, { silent: true });
+        if (!stopped && selectedCase.current === caseId && item.job?.status === "completed") await refreshCases();
       } catch (err) {
         if (!stopped) setError(err.message);
       } finally {
@@ -97,19 +142,21 @@ export default function App({ cloudUser, onSignOut }) {
   }, [review?.id, review?.job?.status, loadCase, refreshCases]);
   async function createCase(demo = false) {
     setBusy(true);
+    setCaseLoading(true);
+    setFailedCase(null);
     setError("");
     try {
       const data = await api(demo ? "/cases/demo" : "/cases", {
         method: "POST",
         ...(demo ? {} : { body: JSON.stringify({ name: `Review ${new Date().toLocaleDateString()}` }) }),
       });
-      await refreshCases();
-      await loadCase(data.id);
+      await refreshCases(data.id);
       navigateTo(demo && !CLOUD_MODE ? "anomaly" : "documents");
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
+      setCaseLoading(false);
     }
   }
   async function exportReport() {
@@ -174,25 +221,34 @@ export default function App({ cloudUser, onSignOut }) {
           <button className={`connection ${connection}`} onClick={() => window.location.reload()} title="Refresh backend connection">
             <span />{connection === "connected" ? "Backend connected" : connection === "checking" ? "Connecting…" : "Backend offline"}
           </button>
+          <div className="topbar-actions">
+            <div className={`workspace-load-status ${loadFailed ? "failed" : ""}`} role="status" aria-live="polite">
+              {loadFailed ? <><ShieldAlert size={15} /><span>{failedCase ? "Couldn’t load case" : "Couldn’t load workspace"}</span>
+                <button type="button" onClick={retryLoading}>Retry</button></> :
+                (contentLoading || requestActivity > 0 || busy) && <><Loader2 className="spin" size={15} />
+                  <span>{workspaceState === "loading" ? "Loading your workspace…" : caseLoading ? "Loading case…" : "Updating workspace…"}</span></>}
+            </div>
           {CLOUD_MODE && <button className="button ghost cloud-settings-button" onClick={() => settingsDialog.current?.showModal()}>
             <Settings2 size={17} /> Settings</button>}
+          </div>
         </header>
         <main id="main-content" className="main-content">
           <div className="page-heading"><div><p className="eyebrow">PROCUREMENT REVIEW</p><h1>{section.title}</h1>
             <p className="page-description">{section.description}</p></div>
             <span className="collection-tag"><BookOpen size={15} /> {CLOUD_MODE ? "Private cloud case" : "Local review"}</span></div>
-          <section className="case-switcher panel" aria-label="Review case selection" ref={caseSwitcher}>
-            <div><p className="eyebrow">CURRENT CASE</p><strong>{review?.name || "No review case yet"}</strong>
-              <small>{review ? `${review.status === "active" ? "Active" : review.status === "starting" ? "Preparing" : "Draft"} · Created ${new Date(review.created_at).toLocaleDateString()}` : "Create a case or open the sample to begin."}</small></div>
+          <section className="case-switcher panel" aria-label="Review case selection" aria-busy={contentLoading} ref={caseSwitcher}>
+            <div><p className="eyebrow">CURRENT CASE</p>{contentLoading ? <div aria-hidden="true"><span className="skeleton skeleton-case-name" /><span className="skeleton skeleton-case-date" /></div> :
+              <><strong>{workspaceState === "error" ? "Workspace unavailable" : review?.name || "No review case yet"}</strong>
+              <small>{workspaceState === "error" ? "Retry to load your cases." : review ? `${review.status === "active" ? "Active" : review.status === "starting" ? "Preparing" : "Draft"} · Created ${new Date(review.created_at).toLocaleDateString()}` : "Create a case or open the sample to begin."}</small></>}</div>
             <div className="case-switcher-actions">
-              {cases.length > 0 && <select ref={caseSelect} aria-label="Select review case" value={review?.id || ""}
-                onChange={async (event) => { try { const selected = await loadCase(event.target.value); setError("");
-                  if (!selected.ready) navigateTo("documents"); } catch (err) { setError(err.message); } }}>
+              {workspaceState === "loading" ? <span className="skeleton skeleton-case-selector" aria-hidden="true" /> :
+                cases.length > 0 && <select ref={caseSelect} aria-label="Select review case" value={review?.id || ""} disabled={controlsDisabled}
+                onChange={(event) => selectCase(event.target.value)}>
                 {cases.map((item) => <option key={item.id} value={item.id}>{item.name} · {new Date(item.created_at).toLocaleDateString()}</option>)}
               </select>}
-              <button ref={newCaseButton} type="button" className="button secondary" disabled={busy} onClick={() => createCase(false)}><Plus size={15} /> New case</button>
-              <button className="button secondary" disabled={busy} onClick={() => createCase(true)}>Try sample <ArrowUpRight size={15} /></button>
-              {CLOUD_MODE && review && <button className="button ghost case-delete" disabled={busy || ["queued", "running"].includes(review.job?.status)}
+              <button ref={newCaseButton} type="button" className="button secondary" disabled={controlsDisabled} onClick={() => createCase(false)}><Plus size={15} /> New case</button>
+              <button className="button secondary" disabled={controlsDisabled} onClick={() => createCase(true)}>Try sample <ArrowUpRight size={15} /></button>
+              {CLOUD_MODE && review && <button className="button ghost case-delete" disabled={controlsDisabled || ["queued", "running"].includes(review.job?.status)}
                 onClick={deleteCase}><Trash2 size={15} /> Delete case</button>}
             </div>
           </section>
@@ -200,6 +256,8 @@ export default function App({ cloudUser, onSignOut }) {
             <div className="notice" role="status">{review.job.kind === "start" ? "Preparing case files and search index" : "Scanning transactions"}… You can leave this page; progress is saved.</div>}
           {CLOUD_MODE && review?.job?.status === "failed" && <div className="notice error" role="alert">{review.job.error}</div>}
           {error && <div className="notice error" role="alert">{error}</div>}
+          {contentLoading && <WorkspaceSkeleton />}
+          <div hidden={contentLoading || workspaceState === "error"}>
           <div hidden={activeTab !== "documents"}>
             <DocumentsTab review={review} onChange={() => loadCase(review.id)} onStart={() => navigateTo("anomaly")}
               onNewCase={() => createCase(false)} busy={busy} />
@@ -210,11 +268,12 @@ export default function App({ cloudUser, onSignOut }) {
           <div hidden={activeTab !== "query"}>
             <QueryTab review={review} onChange={() => loadCase(review.id)} onViewFiles={() => navigateTo("documents")} />
           </div>
+          </div>
           <footer className="page-footer"><span>Sentinel · Built for thoughtful review</span><span>AI assists. You decide.</span></footer>
         </main>
         <div className="report-bar">
-          <div><strong>Case report</strong><small>{review?.can_report ? `${review.scans.length} scans · ${review.questions.length} questions saved` : "Run a scan or ask a question to create a report"}</small></div>
-          <button className="button primary" disabled={!review?.can_report || busy} onClick={exportReport}>
+          <div><strong>Case report</strong><small>{contentLoading ? "Loading case details…" : workspaceState === "error" ? "Case details unavailable" : review?.can_report ? `${review.scans.length} scans · ${review.questions.length} questions saved` : "Run a scan or ask a question to create a report"}</small></div>
+          <button className="button primary" disabled={!review?.can_report || controlsDisabled} onClick={exportReport}>
             <Download size={16} /> Download report
           </button>
         </div>

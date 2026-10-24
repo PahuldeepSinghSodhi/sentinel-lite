@@ -6,8 +6,13 @@ export const supabase = CLOUD_MODE
   : null;
 
 export async function authHeaders() {
-  if (!CLOUD_MODE) return {};
+  const session = await requestSession();
+  return session ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
+export async function requestSession() {
+  if (!CLOUD_MODE) return null;
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session) throw new Error("Sign in to access your workspace.");
-  return { Authorization: `Bearer ${data.session.access_token}` };
+  return data.session;
 }

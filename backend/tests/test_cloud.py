@@ -8,11 +8,66 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
+import requests
+from psycopg import OperationalError
 
 from app.cloud import auth, jobs, objects, providers, store, worker
 
 
 class CloudUnitTests(unittest.TestCase):
+    def test_authentication_failure_classification(self):
+        verified = {"id": "user-1", "email": "User@Example.com", "email_confirmed_at": "2026-10-20"}
+        cases = [
+            (Mock(status_code=401), None, "session_invalid", 401),
+            (Mock(status_code=403), None, "session_invalid", 401),
+            (Mock(status_code=429), None, "auth_unavailable", 503),
+            (Mock(status_code=500), None, "auth_unavailable", 503),
+            (None, requests.Timeout("timeout"), "auth_unavailable", 503),
+            (Mock(status_code=200, json=Mock(return_value={})), None, "account_unverified", 403),
+            (Mock(status_code=200, json=Mock(side_effect=ValueError("bad JSON"))), None, "auth_unavailable", 503),
+            (Mock(status_code=200, json=Mock(return_value=[])), None, "auth_unavailable", 503),
+        ]
+        env = {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_ANON_KEY": "test"}
+        for response, failure, expected_code, expected_status in cases:
+            with self.subTest(code=expected_code, response=response), patch.dict(os.environ, env), patch(
+                "app.cloud.auth.requests.get", return_value=response, side_effect=failure
+            ), patch("app.cloud.auth.db.connect") as connect:
+                with self.assertRaises(auth.AccessError) as raised:
+                    auth.authenticate("Bearer token")
+                self.assertEqual(raised.exception.code, expected_code)
+                self.assertEqual(raised.exception.status_code, expected_status)
+                connect.assert_not_called()
+
+        with patch.dict(os.environ, env), patch(
+            "app.cloud.auth.requests.get", return_value=Mock(status_code=200, json=Mock(return_value=verified))
+        ), patch("app.cloud.auth.db.connect", side_effect=OperationalError("private database URL")):
+            with self.assertRaises(auth.AccessError) as raised:
+                auth.authenticate("Bearer token")
+            self.assertEqual(raised.exception.code, "auth_unavailable")
+            self.assertEqual(raised.exception.status_code, 503)
+            self.assertNotIn("private database", str(raised.exception))
+
+    def test_approved_account_is_normalized_and_checked_on_every_request(self):
+        response = Mock(status_code=200)
+        response.json.return_value = {"id": "user-1", "email": " User@Example.com ", "email_confirmed_at": "2026-10-20"}
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"role": "reviewer"}
+
+        @contextmanager
+        def fake_db():
+            yield conn
+
+        with patch.dict(os.environ, {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_ANON_KEY": "test"}), patch(
+            "app.cloud.auth.requests.get", return_value=response
+        ), patch("app.cloud.auth.db.connect", fake_db):
+            self.assertEqual(auth.authenticate("Bearer token"), {"id": "user-1", "email": "user@example.com", "role": "reviewer"})
+            conn.execute.return_value.fetchone.return_value = None
+            with self.assertRaises(auth.AccessError) as raised:
+                auth.authenticate("Bearer token")
+            self.assertEqual(raised.exception.code, "invite_required")
+            self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(conn.execute.call_count, 2)
+
     def test_missing_bearer_rejected_without_network(self):
         with patch("app.cloud.auth.requests.get") as request:
             with self.assertRaises(PermissionError):
@@ -172,7 +227,16 @@ with TestClient(app) as client:
     with patch('app.cloud.db.connect', healthy_db):
         assert client.get('/health').json() == {'status': 'ready', 'mode': 'cloud'}
     assert client.post('/query', json={'question':'x'}).status_code == 404
-    assert client.get('/cases').status_code == 401
+    missing = client.get('/cases')
+    assert missing.status_code == 401
+    assert missing.json()['code'] == 'session_invalid'
+    from app.cloud.auth import AccessError
+    for code, status in [('session_invalid', 401), ('account_unverified', 403), ('invite_required', 403), ('auth_unavailable', 503)]:
+        with patch('app.cloud.auth.authenticate', side_effect=AccessError(code, 'Public detail', status)):
+            failure = client.get('/me', headers={'Origin':'https://sentinel-document-intelligence.vercel.app'})
+        assert failure.status_code == status
+        assert failure.json() == {'code': code, 'detail': 'Public detail'}
+        assert failure.headers.get('access-control-allow-origin') == 'https://sentinel-document-intelligence.vercel.app'
     denied = client.get('/cases', headers={'Origin':'https://sentinel-document-intelligence.vercel.app'})
     assert denied.headers.get('access-control-allow-origin') == 'https://sentinel-document-intelligence.vercel.app'
 """

@@ -90,6 +90,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build and lint frontend
+      - name: Test, build and lint frontend
         working-directory: frontend
-        run: npm run build && npm run lint
+        run: npm test && npm run build && npm run lint

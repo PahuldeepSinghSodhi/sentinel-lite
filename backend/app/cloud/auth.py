@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 import requests
+from psycopg import Error as DatabaseError
 
 from app.cloud import db
 from app.cloud.settings import value
@@ -11,10 +12,19 @@ _user = ContextVar("sentinel_cloud_user", default=None)
 _job = ContextVar("sentinel_cloud_job", default=None)
 
 
+class AccessError(PermissionError):
+    """A gate failure with a stable public code and HTTP status."""
+
+    def __init__(self, code: str, detail: str, status_code: int):
+        super().__init__(detail)
+        self.code = code
+        self.status_code = status_code
+
+
 def current_user() -> dict:
     user = _user.get()
     if not user:
-        raise PermissionError("Sign in to access this review")
+        raise AccessError("session_invalid", "Sign in to access this review", 401)
     return user
 
 
@@ -36,7 +46,7 @@ def user_context(user: dict, job_id: str | None = None):
 def authenticate(header: str) -> dict:
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise PermissionError("Sign in to access this review")
+        raise AccessError("session_invalid", "Sign in to access this review", 401)
     try:
         result = requests.get(
             f"{value('SUPABASE_URL').rstrip('/')}/auth/v1/user",
@@ -44,17 +54,27 @@ def authenticate(header: str) -> dict:
             timeout=10,
         )
     except requests.RequestException as exc:
-        raise PermissionError("Authentication service is unavailable") from exc
+        raise AccessError("auth_unavailable", "Authentication service is unavailable; please retry", 503) from exc
     if result.status_code != 200:
-        raise PermissionError("Your session has expired; sign in again")
-    user = result.json()
+        if result.status_code in {401, 403}:
+            raise AccessError("session_invalid", "Your session has expired; sign in again", 401)
+        raise AccessError("auth_unavailable", "Authentication service is unavailable; please retry", 503)
+    try:
+        user = result.json()
+        if not isinstance(user, dict):
+            raise ValueError("Invalid identity response")
+    except ValueError as exc:
+        raise AccessError("auth_unavailable", "Authentication service is unavailable; please retry", 503) from exc
     user_id, email = user.get("id"), str(user.get("email") or "").strip().lower()
     if not user_id or not email or not user.get("email_confirmed_at"):
-        raise PermissionError("Account is missing a verified email")
-    with db.connect() as conn:
-        invite = conn.execute("SELECT role FROM app_invites WHERE email = %s AND enabled", (email,)).fetchone()
+        raise AccessError("account_unverified", "Account is missing a verified email", 403)
+    try:
+        with db.connect() as conn:
+            invite = conn.execute("SELECT role FROM app_invites WHERE email = %s AND enabled", (email,)).fetchone()
+    except (DatabaseError, OSError) as exc:
+        raise AccessError("auth_unavailable", "Invitation service is unavailable; please retry", 503) from exc
     if not invite:
-        raise PermissionError("This account is not invited to Sentinel")
+        raise AccessError("invite_required", "This account is not invited to Sentinel", 403)
     return {"id": user_id, "email": email, "role": invite["role"]}
 
 
