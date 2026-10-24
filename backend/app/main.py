@@ -18,7 +18,9 @@ from contextlib import asynccontextmanager
 import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import Any
 
@@ -32,6 +34,7 @@ from app.config import INDEX_DIR, SENTINEL_MODE
 from app.cases.router import router as cases_router
 import pandas as pd
 from pathlib import Path
+import logging
 
 
 # -- Request/Response Schemas ------------------------------------------
@@ -75,7 +78,11 @@ async def lifespan(app: FastAPI):
     if SENTINEL_MODE == "cloud":
         from app.cloud.settings import validate_settings
         validate_settings()
-        yield
+        try:
+            yield
+        finally:
+            from app.cloud.db import close_pool
+            close_pool()
         return
     print("[STARTUP] Loading document index...")
     try:
@@ -105,6 +112,20 @@ if SENTINEL_MODE == "cloud":
     from app.cloud.router import router as cloud_router
     app.include_router(cloud_router)
 
+    from app.cloud.settings import PROVIDER
+    if PROVIDER == "aws":
+        # Repeated scan history can exceed the gateway's wire payload limit.
+        # Standard HTTP compression preserves every saved finding and decision.
+        app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
+        from botocore.exceptions import BotoCoreError, ClientError
+        from psycopg import OperationalError, InterfaceError
+
+        async def availability_error(request: Request, exc):
+            return JSONResponse({"detail":"Cloud service is unavailable; please retry", "code":"auth_unavailable"}, status_code=503)
+
+        for unavailable_type in (BotoCoreError,ClientError,OperationalError,InterfaceError):
+            app.add_exception_handler(unavailable_type,availability_error)
+
     @app.middleware("http")
     async def cloud_gate(request: Request, call_next):
         from app.cloud.auth import AccessError, authenticate, user_context
@@ -113,17 +134,31 @@ if SENTINEL_MODE == "cloud":
         if not request.url.path.startswith(("/cases", "/jobs", "/me", "/admin")):
             return Response(status_code=404)
         try:
-            user = authenticate(request.headers.get("authorization", ""))
+            user = await run_in_threadpool(authenticate, request.headers.get("authorization", ""))
         except AccessError as exc:
             return JSONResponse({"detail": str(exc), "code": exc.code}, status_code=exc.status_code)
         with user_context(user):
-            return await call_next(request)
+            if (os.getenv("SENTINEL_READ_ONLY", "false").lower() == "true"
+                and (request.method not in {"GET", "HEAD", "OPTIONS"} or request.url.path.endswith("/report"))):
+                return JSONResponse({"detail":"Workspace updates are briefly paused for migration. Your records remain available; please retry shortly.",
+                                     "code":"migration_read_only"},status_code=503)
+            try:
+                return await call_next(request)
+            except Exception as exc:
+                if PROVIDER != "aws":
+                    raise
+                logging.getLogger("sentinel.api").error("Request failed: %s",type(exc).__name__)
+                return JSONResponse({"detail":"This operation could not be completed; please retry"},status_code=500)
 
 # Added last so even authentication failures include the allowed browser origin.
+if SENTINEL_MODE == "cloud":
+    from app.cloud.settings import allowed_origins
+    browser_origins = allowed_origins()
+else:
+    browser_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=(["http://localhost:5173", "http://127.0.0.1:5173"] if SENTINEL_MODE == "local"
-                   else [os.getenv("SENTINEL_FRONTEND_ORIGIN", "https://sentinel-document-intelligence.vercel.app")]),
+    allow_origins=browser_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -151,11 +186,20 @@ def readiness_check(request: Request):
         try:
             with db.connect() as conn:
                 conn.execute("SELECT 1")
+                from app.cloud.settings import PROVIDER
+                if PROVIDER == "aws" and not conn.execute("""SELECT 1 FROM worker_status
+                    WHERE name='primary' AND ready AND updated_at>now()-interval '150 seconds'""").fetchone():
+                    raise HTTPException(status_code=503, detail="Background processor is unavailable")
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Cloud database is unavailable") from exc
     elif getattr(request.app.state, "store", None) is None:
         raise HTTPException(status_code=503, detail="Document index is unavailable")
-    return {"status": "ready", "mode": SENTINEL_MODE}
+    result = {"status": "ready", "mode": SENTINEL_MODE}
+    if SENTINEL_MODE == "cloud" and os.getenv("SENTINEL_READ_ONLY", "false").lower() == "true":
+        result["writes_paused"] = True
+    return result
 
 
 @app.post("/query", response_model=QueryResponse)

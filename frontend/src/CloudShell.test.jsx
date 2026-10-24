@@ -8,6 +8,7 @@ const auth = vi.hoisted(() => ({ session: null, listeners: new Set(), getSession
 
 vi.mock("./cloud", () => ({
   CLOUD_MODE: true,
+  CLOUD_PROVIDER: "supabase",
   requestSession: async () => auth.session,
   supabase: { auth: {
     getSession: auth.getSession,

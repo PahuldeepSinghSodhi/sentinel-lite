@@ -253,7 +253,7 @@ export default function App({ cloudUser, onSignOut }) {
             </div>
           </section>
           {CLOUD_MODE && ["queued", "running"].includes(review?.job?.status) &&
-            <div className="notice" role="status">{review.job.kind === "start" ? "Preparing case files and search index" : "Scanning transactions"}… You can leave this page; progress is saved.</div>}
+            <div className="notice" role="status">{{ start: "Preparing case files and search index", scan: "Scanning transactions", upload: "Checking your upload", question: "Finding an answer", investigate: "Investigating this finding", report: "Preparing your report" }[review.job.kind] || "Updating your case"}… You can leave this page; progress is saved.</div>}
           {CLOUD_MODE && review?.job?.status === "failed" && <div className="notice error" role="alert">{review.job.error}</div>}
           {error && <div className="notice error" role="alert">{error}</div>}
           {contentLoading && <WorkspaceSkeleton />}

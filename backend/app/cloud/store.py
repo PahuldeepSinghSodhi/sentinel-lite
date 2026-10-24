@@ -2,6 +2,7 @@
 import os
 import shutil
 import tempfile
+import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -10,7 +11,7 @@ from psycopg.types.json import Jsonb
 
 from app.cloud import db, objects
 from app.cloud.auth import current_job, current_user
-from app.cloud.settings import CASE_LIMIT, GLOBAL_LIMIT, USER_LIMIT
+from app.cloud.settings import CASE_LIMIT, GLOBAL_LIMIT, USER_LIMIT, PROVIDER
 
 
 def root() -> Path:
@@ -85,7 +86,41 @@ def create_case(name: str = "New review") -> dict:
 
 def get_case(case_id: str) -> dict:
     with db.connect() as conn:
+        if PROVIDER == "aws":
+            return _aws_case_result(conn, _owner(conn, case_id))
         return _case_result(conn, _owner(conn, case_id))
+
+
+def _aws_case_result(conn, row):
+    """Fetch findings and investigation briefs in one joined query, not per finding."""
+    case_id = str(row["id"])
+    files = {r["kind"]: {k:r[k] for k in ("kind","filename","extension","size","uploaded_at")}
+             for r in conn.execute("SELECT * FROM case_files WHERE case_id=%s", (case_id,))}
+    scans = []
+    indexed = {}
+    for scan in conn.execute("SELECT * FROM scans WHERE case_id=%s ORDER BY created_at,id", (case_id,)):
+        item = {k:scan[k] for k in ("id","case_id","created_at","transactions_analyzed","duration_ms")}
+        item.update(id=str(scan["id"]), case_id=case_id, findings=[])
+        scans.append(item)
+        indexed[str(scan["id"])] = item
+    for finding in conn.execute("""SELECT f.*,i.payload_json AS investigation FROM findings f
+        JOIN scans s ON s.id=f.scan_id LEFT JOIN investigations i ON i.finding_id=f.id
+        WHERE s.case_id=%s ORDER BY s.created_at,s.id,f.ordinal""", (case_id,)):
+        item = dict(finding["data_json"])
+        item.update(id=str(finding["id"]), decision=finding["decision"], note=finding["note"],
+                    decided_at=finding["decided_at"], investigation=finding["investigation"])
+        indexed[str(finding["scan_id"])]["findings"].append(item)
+    questions = [{"id":str(q["id"]), "case_id":case_id, "created_at":q["created_at"],
+                  "question":q["question"], "answer":q["answer"], "sources":q["sources_json"],
+                  "confidence":q["confidence_json"], "presentation":q["presentation_json"]}
+                 for q in conn.execute("SELECT * FROM questions WHERE case_id=%s ORDER BY created_at,id", (case_id,))]
+    job = conn.execute("SELECT id,kind,status,error FROM jobs WHERE case_id=%s ORDER BY created_at DESC LIMIT 1", (case_id,)).fetchone()
+    pending = bool(conn.execute("SELECT 1 FROM uploads WHERE case_id=%s AND status IN ('reserved','queued') AND expires_at>now() LIMIT 1", (case_id,)).fetchone())
+    return {"id":case_id,"name":row["name"],"status":row["status"],"revision":row["revision"],
+            "created_at":row["created_at"],"started_at":row["started_at"],"files":files,"scans":scans,"questions":questions,
+            "job": {"job_id":str(job["id"]),"kind":job["kind"],"status":job["status"],"error":job["error"]} if job else None,
+            "ready":row["status"]=="active", "can_report":bool(scans or questions),
+            "can_start":row["status"]=="draft" and not pending and {"transactions","rate_card"}.issubset(files)}
 
 
 def list_cases() -> list[dict]:
@@ -117,6 +152,8 @@ def usage() -> dict:
 def save_file(case_id: str, kind: str, filename: str, data: bytes) -> dict:
     from app.cases.store import validate_file
     extension, count = validate_file(kind, filename, data)
+    if PROVIDER == "aws" and extension == ".csv" and count * 384 * 4 + len(data) > USER_LIMIT:
+        raise ValueError("The searchable index for this file would exceed your cloud storage limit")
     owner_id = current_user()["id"]
     path = f"{owner_id}/{case_id}/files/{kind}-{uuid4()}{extension}"
     old_path = None
@@ -170,7 +207,8 @@ def file_path(case_id: str, kind: str) -> Path:
                            (case_id, kind)).fetchone()
     if not row:
         raise KeyError(f"{kind} file not found")
-    target = root() / case_id / f"{kind}{row['extension']}"
+    version = "-" + hashlib.sha256(row["path"].encode()).hexdigest()[:16] if PROVIDER == "aws" else ""
+    target = root() / case_id / f"{kind}{version}{row['extension']}"
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(objects.get(row["path"]))
@@ -340,7 +378,7 @@ def delete_case(case_id: str) -> None:
         shutil.rmtree(target, ignore_errors=True)
 
 
-def save_report(case_id: str, data: bytes) -> None:
+def save_report(case_id: str, data: bytes, revision=None) -> None:
     owner_id = current_user()["id"]
     path = f"{owner_id}/{case_id}/reports/{uuid4()}.pdf"
     old_path = None
@@ -351,6 +389,10 @@ def save_report(case_id: str, data: bytes) -> None:
         with db.connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(7281901)")
             _owner(conn, case_id)
+            if PROVIDER == "aws":
+                current = conn.execute("SELECT revision FROM cases WHERE id=%s FOR UPDATE", (case_id,)).fetchone()
+                if revision != current["revision"]:
+                    raise RuntimeError("Case changed while preparing report; retry")
             old = conn.execute("SELECT size, path FROM case_artifacts WHERE case_id = %s AND name = 'report.pdf'",
                                (case_id,)).fetchone()
             own, total = _usage(conn, owner_id)
@@ -360,6 +402,8 @@ def save_report(case_id: str, data: bytes) -> None:
             conn.execute("""INSERT INTO case_artifacts (case_id, name, path, size) VALUES (%s, 'report.pdf', %s, %s)
                             ON CONFLICT (case_id, name) DO UPDATE SET path = EXCLUDED.path, size = EXCLUDED.size""",
                          (case_id, path, len(data)))
+            if PROVIDER == "aws":
+                conn.execute("UPDATE case_artifacts SET revision=%s WHERE case_id=%s AND name='report.pdf'", (revision, case_id))
             old_path = old["path"] if old else None
     except Exception:
         objects.delete([path])

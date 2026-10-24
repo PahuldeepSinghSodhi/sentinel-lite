@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 import { api } from "./api";
 
-vi.mock("./cloud", () => ({ CLOUD_MODE: true, requestSession: async () => ({ access_token: "synthetic" }) }));
+vi.mock("./cloud", () => ({ CLOUD_MODE: true, CLOUD_PROVIDER: "supabase", requestSession: async () => ({ access_token: "synthetic" }) }));
 vi.mock("./CloudSettings", () => ({ default: () => <p>Settings content</p> }));
 vi.mock("./components/DocumentsTab", () => ({ default: ({ review }) => <p>{review ? `Files for ${review.name}` : "Create a review case"}</p> }));
 vi.mock("./components/AnomalyTab", () => ({ default: () => <p>Anomaly content</p> }));

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.cloud import db, jobs, providers, store
 from app.cloud.auth import current_user, require_admin
+from app.cloud.settings import PROVIDER
 
 router = APIRouter(tags=["Cloud workspace"])
 
@@ -88,10 +89,16 @@ def set_invite(payload: Invite):
             raise ValueError("Enter a valid email and role")
         if email == current_user()["email"] and (not payload.enabled or payload.role != "admin"):
             raise ValueError("An administrator cannot remove their own administrator access")
+        if PROVIDER == "aws" and payload.enabled:
+            from app.cloud.aws_accounts import provision
+            provision(email)
         with db.connect() as conn:
             conn.execute("""INSERT INTO app_invites (email, role, enabled) VALUES (%s, %s, %s)
                             ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role,
                             enabled = EXCLUDED.enabled""", (email, payload.role, payload.enabled))
+        if PROVIDER == "aws" and not payload.enabled:
+            from app.cloud.aws_accounts import provision
+            provision(email,enabled=False)
         return {"email": email, "role": payload.role, "enabled": payload.enabled}
     except Exception as exc:
         _error(exc)

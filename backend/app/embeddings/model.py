@@ -9,7 +9,7 @@ Why a singleton? Loading the model takes 2-3 seconds and ~200 MB RAM.
 Reloading it per-request would make the API unusably slow.
 """
 import numpy as np
-from sentence_transformers import SentenceTransformer
+import os
 from app.config import EMBEDDING_MODEL_NAME
 
 
@@ -22,8 +22,9 @@ class EmbeddingModel:
         Args:
             model_name: HuggingFace model identifier.
         """
+        from sentence_transformers import SentenceTransformer
         print(f"Loading embedding model: {model_name}...")
-        self.model = SentenceTransformer(model_name)
+        self.model = SentenceTransformer(model_name, revision=os.getenv("SENTINEL_EMBEDDING_REVISION"))
         self.dimension = self.model.get_embedding_dimension()
         print(f"Model loaded. Embedding dimension: {self.dimension}")
     

@@ -3,6 +3,7 @@ import requests
 
 from app.cloud import db
 from app.cloud.auth import current_user
+from app.cloud.settings import PROVIDER
 
 MODELS = {
     # Direct ollama.com API names come from GET /api/tags; the -cloud suffix
@@ -27,6 +28,7 @@ class HostedClient:
     def __init__(self, provider: str, model: str, key: str):
         validate_choice(provider, model)
         self.provider, self.model_name, self._key = provider, model, key
+        self.timeout = 120
 
     def generate(self, prompt: str, temperature: float = 0.3, max_output_tokens: int = 1024) -> str:
         return self.generate_with_stats(prompt, temperature, max_output_tokens)["response"]
@@ -50,7 +52,7 @@ class HostedClient:
         try:
             response = requests.post(ENDPOINTS[self.provider], json=body,
                                      headers={"Authorization": f"Bearer {self._key}",
-                                              "Content-Type": "application/json"}, timeout=120)
+                                              "Content-Type": "application/json"}, timeout=self.timeout)
         except requests.RequestException as exc:
             raise RuntimeError("AI provider is unreachable") from exc
         if response.status_code in (401, 403):
@@ -75,6 +77,10 @@ class HostedClient:
 
 
 def current_client() -> HostedClient:
+    if PROVIDER == "aws":
+        from app.cloud.aws_providers import load
+        provider, model, key = load()
+        return HostedClient(provider, model, key)
     with db.connect() as conn:
         row = conn.execute("""SELECT m.provider, m.model, v.decrypted_secret AS api_key
                               FROM model_settings m JOIN vault.decrypted_secrets v ON v.id = m.vault_id
@@ -88,7 +94,11 @@ def settings() -> dict:
     with db.connect() as conn:
         row = conn.execute("SELECT provider, model FROM model_settings WHERE owner_id = %s",
                            (current_user()["id"],)).fetchone()
-    return {"configured": bool(row), "provider": row["provider"] if row else None,
+        configured = bool(row)
+        if not row and PROVIDER == "aws":
+            row = conn.execute("SELECT provider,model FROM recovery_model_preferences WHERE owner_id=%s",
+                               (current_user()["id"],)).fetchone()
+    return {"configured": configured, "provider": row["provider"] if row else None,
             "model": row["model"] if row else None, "choices": MODELS}
 
 
@@ -97,7 +107,13 @@ def save(provider: str, model: str, key: str) -> dict:
     if not 8 <= len(key) <= 500 or "\n" in key:
         raise ValueError("Enter a valid provider API key")
     # Test once before persisting. The provider may count or charge for this call.
-    HostedClient(provider, model, key).generate("Reply with OK.", max_output_tokens=8)
+    probe = HostedClient(provider, model, key)
+    probe.timeout = 15
+    probe.generate("Reply with OK.", max_output_tokens=8)
+    if PROVIDER == "aws":
+        from app.cloud.aws_providers import save as save_aws
+        save_aws(provider, model, key)
+        return settings()
     with db.connect() as conn:
         old = conn.execute("SELECT vault_id FROM model_settings WHERE owner_id = %s FOR UPDATE",
                            (current_user()["id"],)).fetchone()
@@ -115,6 +131,9 @@ def save(provider: str, model: str, key: str) -> dict:
 
 
 def delete() -> None:
+    if PROVIDER == "aws":
+        from app.cloud.aws_providers import delete as delete_aws
+        return delete_aws()
     with db.connect() as conn:
         row = conn.execute("DELETE FROM model_settings WHERE owner_id = %s RETURNING vault_id",
                            (current_user()["id"],)).fetchone()

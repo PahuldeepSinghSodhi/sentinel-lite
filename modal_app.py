@@ -5,6 +5,7 @@ that cannot exceed the included monthly credit. Do not put secrets here.
 """
 
 from pathlib import Path
+import os
 
 import modal
 
@@ -21,7 +22,7 @@ image = (
     # Bake the embedding weights into the image so cold workers do not fetch
     # them on every scale-from-zero start.
     .run_commands("python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')\"")
-    .env({"SENTINEL_MODE": "cloud"})
+    .env({"SENTINEL_MODE": "cloud", "SENTINEL_READ_ONLY": os.getenv("SENTINEL_READ_ONLY", "false")})
     .add_local_dir(str(ROOT / "backend" / "app"), remote_path="/root/app")
     .add_local_dir(str(ROOT / "backend" / "data"), remote_path="/root/data")
 )

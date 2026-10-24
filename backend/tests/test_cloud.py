@@ -239,6 +239,13 @@ with TestClient(app) as client:
         assert failure.headers.get('access-control-allow-origin') == 'https://sentinel-document-intelligence.vercel.app'
     denied = client.get('/cases', headers={'Origin':'https://sentinel-document-intelligence.vercel.app'})
     assert denied.headers.get('access-control-allow-origin') == 'https://sentinel-document-intelligence.vercel.app'
+    import os
+    with patch.dict(os.environ, {'SENTINEL_READ_ONLY':'true'}), patch('app.cloud.auth.authenticate', return_value={'id':'u','email':'u@example.test','role':'admin'}):
+        assert client.get('/me').status_code == 200
+        assert client.post('/cases',json={'name':'paused'}).json()['code'] == 'migration_read_only'
+        assert client.get('/cases/any/report').status_code == 503
+        with patch('app.cases.router.store.list_cases',return_value=[]):
+            assert client.get('/cases').json() == []
 """
         env = {**os.environ, "SENTINEL_MODE": "cloud", "SUPABASE_URL": "https://example.supabase.co",
                "SUPABASE_ANON_KEY": "test", "SUPABASE_SERVICE_ROLE_KEY": "test",

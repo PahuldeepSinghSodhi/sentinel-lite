@@ -3,9 +3,13 @@ from uuid import UUID, uuid4
 
 from app.cloud import db
 from app.cloud.auth import current_user
+from app.cloud.settings import PROVIDER
 
 
 def queue(case_id: str, kind: str) -> dict:
+    if PROVIDER == "aws":
+        from app.cloud.aws_jobs import queue as aws_queue
+        return aws_queue(case_id, kind)
     if kind not in {"start", "scan"}:
         raise ValueError("Unknown job type")
     owner_id = current_user()["id"]
@@ -41,8 +45,10 @@ def get(job_id: str) -> dict:
     except ValueError as exc:
         raise KeyError("Job not found") from exc
     with db.connect() as conn:
-        row = conn.execute("""SELECT id, case_id, kind, status, attempts, result_id, error,
-                              created_at, updated_at FROM jobs WHERE id = %s AND owner_id = %s""",
+        columns = "id, case_id, kind, status, attempts, result_id, error, created_at, updated_at"
+        if PROVIDER == "aws":
+            columns += ", result_json"
+        row = conn.execute(f"SELECT {columns} FROM jobs WHERE id = %s AND owner_id = %s",
                            (job_id, current_user()["id"])).fetchone()
     if not row:
         raise KeyError("Job not found")
@@ -66,8 +72,10 @@ def claim() -> dict | None:
         exhausted = list(conn.execute("""UPDATE jobs SET status = 'failed', leased_until = null,
                              error = 'Processing stopped after three attempts', updated_at = now()
                              WHERE status = 'running' AND leased_until < now() AND attempts >= 3
-                             RETURNING case_id, kind"""))
+                             RETURNING case_id, kind, id"""))
         for item in exhausted:
+            if PROVIDER == "aws" and item["kind"] == "upload":
+                conn.execute("UPDATE uploads SET status='failed' WHERE id=(SELECT (payload_json->>'upload_id')::uuid FROM jobs WHERE id=%s)", (item["id"],))
             if item["kind"] == "start":
                 conn.execute("UPDATE cases SET status = 'draft' WHERE id = %s AND status = 'starting'",
                              (item["case_id"],))
@@ -85,8 +93,14 @@ def claim() -> dict | None:
         return row
 
 
-def finish(job_id: str, result_id: str | None = None) -> None:
+def finish(job_id: str, result_id: str | None = None, result: dict | None = None) -> None:
     with db.connect() as conn:
+        if PROVIDER == "aws":
+            from psycopg.types.json import Jsonb
+            from fastapi.encoders import jsonable_encoder
+            conn.execute("""UPDATE jobs SET status='completed', result_id=%s, result_json=%s, error=null,
+                leased_until=null, updated_at=now() WHERE id=%s""", (result_id, Jsonb(jsonable_encoder(result)), job_id))
+            return
         conn.execute("""UPDATE jobs SET status = 'completed', result_id = %s, error = null,
                         leased_until = null, updated_at = now() WHERE id = %s""", (result_id, job_id))
 
@@ -97,15 +111,17 @@ def extend(job_id: str) -> None:
                         WHERE id = %s AND status = 'running'""", (job_id,))
 
 
-def fail(job: dict) -> None:
+def fail(job: dict, public_error: str | None = None) -> None:
     final = job["attempts"] >= 3
     with db.connect() as conn:
         conn.execute("""UPDATE jobs SET status = %s,
                         leased_until = CASE WHEN %s THEN null ELSE now() + interval '1 minute' END,
                         error = %s, updated_at = now() WHERE id = %s""",
                      ("failed" if final else "queued", final,
-                      "Processing failed; retry or contact the administrator" if final else None,
+                      (public_error or "Processing failed; retry or contact the administrator") if final else None,
                       job["id"]))
         if final and job["kind"] == "start":
             conn.execute("UPDATE cases SET status = 'draft' WHERE id = %s AND status = 'starting'",
                          (job["case_id"],))
+        if final and PROVIDER == "aws" and job["kind"] == "upload":
+            conn.execute("UPDATE uploads SET status='failed' WHERE id=%s", (job["payload_json"]["upload_id"],))

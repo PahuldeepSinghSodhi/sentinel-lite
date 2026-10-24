@@ -6,7 +6,7 @@ import requests
 from psycopg import Error as DatabaseError
 
 from app.cloud import db
-from app.cloud.settings import value
+from app.cloud.settings import PROVIDER, value
 
 _user = ContextVar("sentinel_cloud_user", default=None)
 _job = ContextVar("sentinel_cloud_job", default=None)
@@ -47,6 +47,9 @@ def authenticate(header: str) -> dict:
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise AccessError("session_invalid", "Sign in to access this review", 401)
+    if PROVIDER == "aws":
+        from app.cloud.aws_auth import authenticate as aws_authenticate
+        return aws_authenticate(token)
     try:
         result = requests.get(
             f"{value('SUPABASE_URL').rstrip('/')}/auth/v1/user",

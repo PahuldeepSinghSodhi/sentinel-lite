@@ -1,11 +1,23 @@
 """Case-scoped upload, review, question, source, and report API."""
-from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi import APIRouter, File, HTTPException, UploadFile, Request
+from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.cases import investigation, questions, report, sources, store, workflow
 from app.config import BACKEND_DIR
 from app.config import SENTINEL_MODE
+
+
+def aws_mode():
+    if SENTINEL_MODE != "cloud":
+        return False
+    from app.cloud.settings import PROVIDER
+    return PROVIDER == "aws"
+
+
+def queued(request, case_id, kind, payload=None):
+    from app.cloud.aws_jobs import queue
+    return JSONResponse(queue(case_id,kind,payload,request.headers.get("idempotency-key")),status_code=202)
 
 
 router = APIRouter(prefix="/cases", tags=["Review cases"])
@@ -79,6 +91,9 @@ def cases_get(case_id: str):
 
 @router.post("/{case_id}/files/{kind}")
 async def cases_upload(case_id: str, kind: str, file: UploadFile = File(...)):
+    if aws_mode():
+        await file.close()
+        raise HTTPException(409,"Use an authorized direct upload")
     if kind not in store.FILE_RULES:
         raise HTTPException(status_code=400, detail="Unknown upload section")
     data = await file.read(store.MAX_FILE_BYTES + 1)
@@ -128,20 +143,25 @@ def cases_decide(case_id: str, finding_id: str, payload: Decision):
 
 
 @router.post("/{case_id}/findings/{finding_id}/investigate")
-def cases_investigate(case_id: str, finding_id: str):
+def cases_investigate(case_id: str, finding_id: str, request: Request):
     try:
+        if aws_mode():
+            store.get_finding(case_id,finding_id)
+            return queued(request,case_id,"investigate",{"finding_id":finding_id})
         return investigation.investigate(case_id, finding_id)
     except Exception as exc:
         _error(exc)
 
 
 @router.post("/{case_id}/questions")
-def cases_ask(case_id: str, payload: AskCase):
+def cases_ask(case_id: str, payload: AskCase, request: Request):
     try:
         store.require_active(case_id)
         question = payload.question.strip()
         if not question:
             raise ValueError("Question cannot be empty")
+        if aws_mode():
+            return queued(request,case_id,"question",{"question":question,"top_k":payload.top_k})
         result = questions.answer_case_question(case_id, question, top_k=payload.top_k)
         item_id = store.add_question(case_id, question, result["answer"],
                                      result["sources"], result.get("confidence", {}),
@@ -164,6 +184,15 @@ def cases_source(case_id: str, kind: str, page: int | None = None, row: int | No
 @router.get("/{case_id}/files/contract/original")
 def cases_original_contract(case_id: str):
     try:
+        if aws_mode():
+            from app.cloud import db, store as cloud_store
+            from app.cloud.aws_objects import signed_download
+            with db.connect() as conn:
+                cloud_store._owner(conn,case_id)
+                row=conn.execute("SELECT path,extension FROM case_files WHERE case_id=%s AND kind='contract'",(case_id,)).fetchone()
+            if not row or row["extension"] != ".pdf":
+                raise ValueError("The uploaded contract is not a PDF")
+            return {"url":signed_download(row["path"],"contract.pdf",inline=True)}
         path = store.file_path(case_id, "contract")
         if path.suffix.lower() != ".pdf":
             raise ValueError("The uploaded contract is not a PDF")
@@ -174,11 +203,19 @@ def cases_original_contract(case_id: str):
 
 
 @router.get("/{case_id}/report")
-def cases_report(case_id: str):
+def cases_report(case_id: str, request: Request):
     try:
         case = store.get_case(case_id)
         if not case["can_report"]:
             raise ValueError("Run a scan or ask a question before downloading a report")
+        if aws_mode():
+            from app.cloud import db
+            from app.cloud.aws_objects import signed_download
+            with db.connect() as conn:
+                item=conn.execute("SELECT path FROM case_artifacts WHERE case_id=%s AND name='report.pdf' AND revision=%s",(case_id,case["revision"])).fetchone()
+            if item:
+                return {"url":signed_download(item["path"],f"sentinel-review-{case_id[:8]}.pdf")}
+            return queued(request,case_id,"report")
         pdf = report.make_pdf(case)
         if SENTINEL_MODE == "cloud":
             from app.cloud import store as cloud_store
@@ -186,6 +223,33 @@ def cases_report(case_id: str):
         return Response(pdf, media_type="application/pdf", headers={
             "Content-Disposition": f'attachment; filename="sentinel-review-{case_id[:8]}.pdf"'
         })
+    except Exception as exc:
+        _error(exc)
+
+
+class UploadTicket(BaseModel):
+    filename: str = Field(min_length=1,max_length=200)
+    size: int = Field(gt=0,le=10*1024*1024)
+
+
+@router.post("/{case_id}/uploads/{kind}")
+def upload_authorization(case_id: str,kind: str,payload: UploadTicket):
+    if not aws_mode():
+        raise HTTPException(404)
+    try:
+        from app.cloud.uploads import authorize
+        return authorize(case_id,kind,payload.filename,payload.size)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/{case_id}/uploads/{upload_id}/confirm")
+def upload_confirmation(case_id: str,upload_id: str,request: Request):
+    if not aws_mode():
+        raise HTTPException(404)
+    try:
+        from app.cloud.uploads import confirm
+        return JSONResponse(confirm(case_id,upload_id,request.headers.get("idempotency-key")),status_code=202)
     except Exception as exc:
         _error(exc)
 

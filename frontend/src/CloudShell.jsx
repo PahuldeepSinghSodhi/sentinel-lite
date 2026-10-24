@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Layers3, LockKeyhole, ShieldCheck } from "lucide-react";
 import { api } from "./api";
-import { supabase } from "./cloud";
+import { supabase, CLOUD_PROVIDER } from "./cloud";
 import Workspace from "./App";
 import { accountIdentity, subscribeAccessFailure } from "./access";
 
@@ -15,6 +15,7 @@ export default function CloudShell() {
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [code, setCode] = useState("");
   const latest = useRef({ session: null, epoch: 0, denial: 0 });
   const pending = useRef(null);
   const identity = accountIdentity(session);
@@ -109,6 +110,15 @@ export default function CloudShell() {
     else setEmailSent(true);
   }
 
+  async function verifyCode(event) {
+    event.preventDefault();
+    setError("");
+    setSending(true);
+    const { error: issue } = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: "email" });
+    setSending(false);
+    if (issue) setError(issue.message);
+  }
+
   if (user) return <Workspace key={identity} cloudUser={user} onSignOut={() => supabase.auth.signOut()} />;
   return <div className="cloud-entry"><div className="cloud-entry-card">
     <span className="cloud-logo"><Layers3 size={24} /> sentinel<span>.</span></span>
@@ -120,13 +130,19 @@ export default function CloudShell() {
         <button className="button primary" onClick={retryVerification}>Retry verification</button>
         <button className="button secondary" onClick={() => supabase.auth.signOut()}>Sign out and try another account</button></> :
       <><div className="cloud-signin">
-        {emailSent ? <p role="status">Check your inbox for a sign-in link. Open it on this device to enter your workspace.</p> :
+        {emailSent ? CLOUD_PROVIDER === "aws" ? <form className="cloud-email-form" onSubmit={verifyCode}>
+          <p role="status">Enter the verification code sent to your invited email.</p>
+          <label htmlFor="cloud-code">Email verification code</label>
+          <input id="cloud-code" value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" maxLength={8} required />
+          <button className="button primary" type="submit" disabled={sending}>{sending ? "Checking code…" : "Open workspace"}</button>
+          <button className="button secondary" type="button" onClick={() => { setEmailSent(false); setCode(""); setError(""); }}>Use another email or request a new code</button>
+        </form> : <p role="status">Check your inbox for a sign-in link. Open it on this device to enter your workspace.</p> :
           <form className="cloud-email-form" onSubmit={emailSignIn}>
             <label htmlFor="cloud-email">Invited email</label>
             <input id="cloud-email" type="email" autoComplete="email" required value={email}
               onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
             <button className="button primary" type="submit" disabled={sending}>
-              {sending ? "Sending link…" : "Email me a sign-in link"} <ArrowRight size={16} />
+              {sending ? "Sending…" : CLOUD_PROVIDER === "aws" ? "Email me a sign-in code" : "Email me a sign-in link"} <ArrowRight size={16} />
             </button>
           </form>}
         {googleEnabled && <button className="button secondary" onClick={() => signIn("google")}>Continue with Google <ArrowRight size={16} /></button>}

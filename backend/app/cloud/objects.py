@@ -3,7 +3,7 @@ from urllib.parse import quote
 
 import requests
 
-from app.cloud.settings import BUCKET, value
+from app.cloud.settings import BUCKET, PROVIDER, value
 
 
 def _url(path: str) -> str:
@@ -17,6 +17,9 @@ def _headers() -> dict:
 
 
 def put(path: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+    if PROVIDER == "aws":
+        from app.cloud import aws_objects
+        return aws_objects.put(path, data, content_type)
     response = requests.post(_url(path), data=data,
                              headers={**_headers(), "Content-Type": content_type}, timeout=90)
     if response.status_code not in (200, 201):
@@ -24,6 +27,9 @@ def put(path: str, data: bytes, content_type: str = "application/octet-stream") 
 
 
 def get(path: str) -> bytes:
+    if PROVIDER == "aws":
+        from app.cloud import aws_objects
+        return aws_objects.get(path)
     url = f"{value('SUPABASE_URL').rstrip('/')}/storage/v1/object/authenticated/{BUCKET}/{quote(path, safe='/')}"
     response = requests.get(url, headers=_headers(), timeout=90)
     if response.status_code == 404:
@@ -34,6 +40,9 @@ def get(path: str) -> bytes:
 
 
 def delete(paths: list[str]) -> None:
+    if PROVIDER == "aws":
+        from app.cloud import aws_objects
+        return aws_objects.delete(paths)
     if not paths:
         return
     response = requests.delete(
