@@ -72,13 +72,16 @@ def main():
     args=parser.parse_args()
     ledger_path=BASE/"qualification.json"
     ledger=json.loads(ledger_path.read_text())
-    qa=authenticated("qualification")
+    if args.action=="cleanup" and all(ledger.get(name+"_deleted",False) for name in ("case_id","stress_case_id")):
+        print("Recorded synthetic cases are already removed")
+        return
+    qa=None if args.action=="owner-ai" else authenticated("qualification")
     results={}
     def save():
         ledger_path.write_text(json.dumps(ledger,indent=2))
     if args.action=="cleanup":
         for name in ("case_id","stress_case_id"):
-            if ledger.get(name):
+            if ledger.get(name) and not ledger.get(name+"_deleted"):
                 case=request(qa,"GET","/cases/"+ledger[name]).json()
                 assert case["name"].startswith("AWS synthetic ")
                 request(qa,"DELETE","/cases/"+ledger[name])
