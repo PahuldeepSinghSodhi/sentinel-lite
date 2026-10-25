@@ -1,9 +1,10 @@
 # Sentinel-Lite: portfolio and résumé notes
 
 These claims describe the AWS migration checkout and the deployed main website,
-verified October 25, 2026. The code is checkpointed on `codex/aws-migration`;
-deployment does not imply that GitHub `master` or the older cloud-beta draft PR
-has been updated. See [verified migration status](aws-execution-status.md).
+verified October 25, 2026. The repository publication includes the migration,
+session continuity, reusable private samples, recoverable uploads and rotating
+loading indicators. See [verified migration status](aws-execution-status.md) and
+[sample/upload acceptance](sample-upload-repair.md).
 
 ## Project description
 
@@ -23,6 +24,7 @@ relevant excerpts to the selected external provider; saved keys stay server-side
 - Implemented Cognito account binding, server-side invitation/ownership checks, private S3 upload tickets and signed downloads, with RDS PostgreSQL and Secrets Manager.
 - Added leased background jobs and retry keys for document preparation, scans, questions, investigations and reports; preserved case and draft state across tab returns and credential refreshes.
 - Configured scheduled health checks, CloudWatch/email alerts and encrypted daily recovery copies; verified isolated database/file restoration and a controlled frontend rollback.
+- Added idempotent private sample provisioning and staged upload validation with actionable errors, cancellation and preserved files after failed replacements.
 
 For a shorter résumé, choose three relevant bullets. This is a portfolio beta on
 one application host and a Single-AZ database. Do not turn successful controlled

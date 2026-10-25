@@ -2,9 +2,9 @@ Sentinel: deployment comparison, project journey and résumé source brief
 
 Prepared October 25, 2026, from the checked-out deployment code, recorded live
 qualification results, deployment evidence and the owner's post-migration
-feedback. This describes the deployed website and the codex/aws-migration
-checkpoint; it does not imply GitHub master has been updated. No new load
-test was run to prepare this brief, and the retired service was not restarted.
+feedback. This describes the deployed website and the AWS migration source
+published with this repository update. No new load test was run to prepare this
+brief, and the retired service was not restarted.
 
 What changed and why
 

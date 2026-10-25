@@ -53,6 +53,32 @@ by matching a client-supplied email.
 - The scheduler can invoke only its fixed SSM documents on the dedicated host.
   Bootstrap-secret reads and image-push grants are temporary operator access.
 
+## Cloud API workflow
+
+The browser sends the Cognito identity token to protected routes. `/me` verifies
+entry access; every protected operation still checks the live invitation and
+case ownership. Same-account session refreshes do not require a workspace reset.
+
+| Operation | AWS interface |
+|---|---|
+| Create/reopen private sample | `POST /cases/demo` returns the account's case, including provisioning state |
+| Reserve a staged upload | `POST /cases/{id}/uploads/{kind}` with `filename` and `size`; returns a private S3 POST ticket and `upload_id` |
+| Transfer and confirm | Send the file using that ticket, then `POST /cases/{id}/uploads/{upload_id}/confirm`; returns a durable validation job |
+| Cancel unconfirmed transfer | `DELETE /cases/{id}/uploads/{upload_id}`; running/completed validation cannot be cancelled this way |
+| Prepare, scan, ask or investigate | Existing case routes return HTTP 202 with `job_id` and `status` for queued work |
+| Check background work | `GET /jobs/{job_id}` returns owner-scoped status and safe failure information |
+| Download report | The report route returns an existing signed artifact URL or queues report generation |
+
+Multipart uploads on `/cases/{id}/files/{kind}` remain the local/legacy path;
+AWS uses authorized direct transfer. Sample sources are fixed. Invalid custom
+uploads terminate validation with a useful explanation, and failed replacements
+preserve previously accepted sources. See [sample/upload recovery](sample-upload-repair.md).
+
+The Vercel build uses [public AWS configuration](../frontend/.env.aws.example).
+Provider/database credentials and AWS operator secrets are never frontend
+environment values. The [recovery runbook](aws-recovery.md) describes deployment
+and operator configuration.
+
 ## Measured capacity
 
 These are controlled synthetic observations from the owner's computer to Sydney,

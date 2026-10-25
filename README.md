@@ -23,6 +23,14 @@ Procurement reviewers often have to reconcile transaction rows, approved prices,
 
 In AWS mode, uploads are authorized for direct S3 transfer and validated in the worker. Preparation, scans, questions, investigations and reports use durable Postgres jobs. The UI can show queued, running, completed or failed status after a refresh. Scanning makes **zero model calls**. Returning to a tab or refreshing credentials preserves the approved workspace; a new page load verifies access again. See the [AWS architecture](docs/aws-architecture.md) and [recovery runbook](docs/aws-recovery.md). Cloud mode does not upload existing local cases automatically. The [old Modal/Supabase runbook](docs/cloud-deployment.md) is retained for recovery reference.
 
+## Recent deployed updates
+
+- **AWS migration:** API Gateway/private VPC integration, EC2 API and warmed worker, private RDS and S3, Cognito/SES email codes, owner-specific Secrets Manager keys, CloudWatch alerts, and scheduled recovery checks. Vercel still hosts the frontend; requested AI inference stays with the selected external provider.
+- **Session continuity:** first entry and page reload verify the invitation. Returning to the tab and same-account token refreshes retain the selected case, section, drafts and ongoing work. Sign-out or a changed account removes private workspace state; protected API requests continue enforcing invitations and ownership.
+- **Private reusable sample:** every invited account can create or reopen its own synthetic sample, separate from its two custom cases. Durable provisioning supplies all three source files; sample preparation, scans, evidence and reports do not require an AI key. Existing history is preserved on reopening.
+- **Recoverable uploads:** validation explains unsupported or invalid files, preserves an accepted file when its replacement fails, and distinguishes transfer from queued/running validation. Slow jobs expose **Check status**; cancellation releases unconfirmed reservations. See [sample and upload recovery](docs/sample-upload-repair.md).
+- **Visible loading:** workspace activity and investigation/upload controls show rotating indicators. Reduced-motion settings use a slower loader rotation while decorative animation remains reduced.
+
 ## What a review looks like
 
 1. Click **New case**, or **Try sample** for the bundled demo.
@@ -68,14 +76,14 @@ For Docker, start Ollama on the host and run `docker compose up --build` at the 
 
 ## Upload contract and case API
 
-Transaction CSV needs `vendor_name`, `role_level`, and numeric `hourly_rate`. Rate-card CSV needs `vendor_name`, `role_level`, and positive numeric `approved_rate`; each vendor/role pair must be unique. Extra columns such as `hours`, `total_amount`, `transaction_id`, and `invoice_ref` are supported. Files must be UTF-8 CSV/TXT or text-based PDF, at most 10 MB each. The routes below describe local mode; cloud case routes require a verified bearer token, and Start review and Scan return a job ID. See the [cloud API differences](docs/cloud-deployment.md#api-differences-from-local-mode).
+Transaction CSV needs `vendor_name`, `role_level`, and numeric `hourly_rate`. Rate-card CSV needs `vendor_name`, `role_level`, and positive numeric `approved_rate`; each vendor/role pair must be unique. Extra columns such as `hours`, `total_amount`, `transaction_id`, and `invoice_ref` are supported. Files must be UTF-8 CSV/TXT or text-based PDF, at most 10 MB each. The routes below describe local mode; cloud case routes require a verified bearer token, and Start review and Scan return a job ID. See the [AWS API workflow](docs/aws-architecture.md#cloud-api-workflow).
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/` | Existing sample index status |
 | `GET` | `/cases` | Local case summaries |
 | `POST` | `/cases` | Create case; JSON `{ "name": "May review" }` |
-| `POST` | `/cases/demo` | Create sample case from bundled files |
+| `POST` | `/cases/demo` | Local: create sample; AWS: create or reopen the account's reusable private sample |
 | `GET` | `/cases/{id}` | Files, scans, decisions, and questions |
 | `POST` | `/cases/{id}/files/{kind}` | Multipart field `file`; kind is `transactions`, `rate_card`, or `contract` |
 | `POST` | `/cases/{id}/start` | Requires both mandatory uploads; builds case index |
@@ -97,7 +105,9 @@ On the initial generated benchmark, the detector found 9 labelled type/row pairs
 
 The default local mode is a single-user prototype without login or OCR. The opt-in cloud mode adds account ownership and private storage, but is not a production security certification. The LLM can still be wrong; reviewers should verify citations and decisions.
 
-### Cloud beta verification (2026-10-21)
+### Historical Modal/Supabase verification (2026-10-21)
+
+This section records the retired deployment. The [AWS cutover and live verification](docs/aws-execution-status.md) supersede its outstanding deployment checks; the [sample/upload repair](docs/sample-upload-repair.md) records the later separate-account acceptance.
 
 One signed-in synthetic case passed required CSV upload validation, optional TXT upload, background preparation, scanning, CSV/TXT source opening, a saved review decision after refresh, a code-backed duplicate question, and PDF export. The scan processed **12 rows and produced 9 findings in 21,748 ms**; this is a single hosted walkthrough, not a latency benchmark. The duplicate answer identified **one group, two rows, and one extra copy** with source-row links. The exported PDF included both anomaly-review and document-intelligence sections.
 
@@ -115,4 +125,6 @@ Deferred candidates, **not implemented**: exact-plus-semantic identifier retriev
 
 ## Stack and project status
 
-Core: Python, FastAPI, Pandas/SciPy, sentence-transformers (`all-MiniLM-L6-v2`), FAISS, ReportLab, React, and Vite. Local mode: SQLite and Ollama (`llama3.1`). Cloud beta: Supabase Auth/Postgres/private Storage/Vault, Modal API and worker, and Vercel hosting. The retrieval pipeline is implemented directly and does **not** use LangChain; the project does not implement blockchain. The current cloud work is in an [open draft pull request](https://github.com/PahuldeepSinghSodhi/sentinel-lite/pull/1), not yet merged into `master`.
+Core: Python, FastAPI, Pandas/SciPy, sentence-transformers (`all-MiniLM-L6-v2`), FAISS, ReportLab, React, and Vite. Local mode: SQLite and Ollama (`llama3.1`). Active cloud beta: Vercel frontend; AWS API Gateway, EC2 API/worker, RDS PostgreSQL, S3, Cognito/SES, Secrets Manager, ECR, CloudWatch/SNS and EventBridge/SSM. The durable queue uses PostgreSQL leases. Retained Modal/Supabase adapters and runbooks describe the earlier deployment and recovery path.
+
+The repository includes the AWS migration, session continuity, reusable samples, upload recovery and animated loading fixes. The retrieval pipeline is implemented directly and does **not** use LangChain; the project does not implement blockchain, SQS, ECS/Fargate, Lambda or Terraform. See the [dated execution status](docs/aws-execution-status.md), [architecture](docs/aws-architecture.md), and [portfolio notes](docs/portfolio-notes.md) for verified behavior and limits.

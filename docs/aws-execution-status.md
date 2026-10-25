@@ -6,6 +6,11 @@ the active application services run on AWS. The separate AWS preview remains at
 https://sentinel-aws-preview.vercel.app. The old Modal API and hourly recovery
 schedule are stopped. Original private Supabase data remains a recovery source.
 
+The source publication also includes the subsequent [reusable-sample and upload
+recovery repair](sample-upload-repair.md), workspace loading feedback and rotating
+loading indicators. Their changes preserve the deployed invitation and ownership
+boundaries. Local mode remains separate from cloud cases.
+
 ## Completed and verified
 
 | Stage | Evidence |
