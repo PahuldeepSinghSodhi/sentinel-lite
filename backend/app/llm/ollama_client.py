@@ -6,7 +6,7 @@ configured Ollama endpoint during generation.
 """
 import requests
 import json
-from app.config import OLLAMA_BASE_URL, OLLAMA_MODEL
+from app.config import OLLAMA_BASE_URL, OLLAMA_MODEL, SENTINEL_MODE
 
 class OllamaClient:
     """Wrapper around the local Ollama REST API for text generation."""
@@ -78,6 +78,9 @@ _client_instance: OllamaClient | None = None
 
 def get_ollama_client() -> OllamaClient:
     """Get the shared Ollama client instance."""
+    if SENTINEL_MODE == "cloud":
+        from app.cloud.providers import current_client
+        return current_client()
     global _client_instance
     if _client_instance is None:
         _client_instance = OllamaClient()

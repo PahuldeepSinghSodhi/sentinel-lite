@@ -15,8 +15,12 @@ Run with:
     uvicorn app.main:app --reload --port 8000
 """
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import Any
 
@@ -26,10 +30,11 @@ from app.rag.multi_doc import multi_doc_query
 from app.anomaly.detector import detect_anomalies
 from app.anomaly.router import classify_query
 from app.anomaly.explainer import explain_anomaly
-from app.config import INDEX_DIR
+from app.config import INDEX_DIR, SENTINEL_MODE
 from app.cases.router import router as cases_router
 import pandas as pd
 from pathlib import Path
+import logging
 
 
 # -- Request/Response Schemas ------------------------------------------
@@ -58,6 +63,7 @@ class HealthResponse(BaseModel):
     """Schema for the / health check response."""
     status: str
     documents_indexed: int
+    mode: str
 
 
 # -- Application Lifespan ---------------------------------------------
@@ -69,6 +75,15 @@ async def lifespan(app: FastAPI):
     The loaded store is saved to app.state.store so all endpoints
     can access it without reinitializing.
     """
+    if SENTINEL_MODE == "cloud":
+        from app.cloud.settings import validate_settings
+        validate_settings()
+        try:
+            yield
+        finally:
+            from app.cloud.db import close_pool
+            close_pool()
+        return
     print("[STARTUP] Loading document index...")
     try:
         store = load_existing_index()
@@ -91,15 +106,65 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Local browser client only; this API exposes case documents and review history.
+app.include_router(cases_router)
+
+if SENTINEL_MODE == "cloud":
+    from app.cloud.router import router as cloud_router
+    app.include_router(cloud_router)
+
+    from app.cloud.settings import PROVIDER
+    if PROVIDER == "aws":
+        # Repeated scan history can exceed the gateway's wire payload limit.
+        # Standard HTTP compression preserves every saved finding and decision.
+        app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
+        from botocore.exceptions import BotoCoreError, ClientError
+        from psycopg import OperationalError, InterfaceError
+
+        async def availability_error(request: Request, exc):
+            return JSONResponse({"detail":"Cloud service is unavailable; please retry", "code":"auth_unavailable"}, status_code=503)
+
+        for unavailable_type in (BotoCoreError,ClientError,OperationalError,InterfaceError):
+            app.add_exception_handler(unavailable_type,availability_error)
+
+    @app.middleware("http")
+    async def cloud_gate(request: Request, call_next):
+        from app.cloud.auth import AccessError, authenticate, user_context
+        if request.method == "OPTIONS" or request.url.path in {"/", "/health", "/openapi.json", "/docs"}:
+            return await call_next(request)
+        if not request.url.path.startswith(("/cases", "/jobs", "/me", "/admin")):
+            return Response(status_code=404)
+        try:
+            user = await run_in_threadpool(authenticate, request.headers.get("authorization", ""))
+        except AccessError as exc:
+            return JSONResponse({"detail": str(exc), "code": exc.code}, status_code=exc.status_code)
+        with user_context(user):
+            if (os.getenv("SENTINEL_READ_ONLY", "false").lower() == "true"
+                and (request.method not in {"GET", "HEAD", "OPTIONS"} or request.url.path.endswith("/report"))):
+                return JSONResponse({"detail":"Workspace updates are briefly paused for migration. Your records remain available; please retry shortly.",
+                                     "code":"migration_read_only"},status_code=503)
+            try:
+                return await call_next(request)
+            except Exception as exc:
+                if PROVIDER != "aws":
+                    raise
+                from uuid import uuid4
+                request_id = str(uuid4())
+                logging.getLogger("sentinel.api").error("Request %s failed (%s, %s)",request_id,request.method,type(exc).__name__)
+                return JSONResponse({"detail":"This operation could not be completed; please retry","request_id":request_id},status_code=500)
+
+# Added last so even authentication failures include the allowed browser origin.
+if SENTINEL_MODE == "cloud":
+    from app.cloud.settings import allowed_origins
+    browser_origins = allowed_origins()
+else:
+    browser_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=browser_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(cases_router)
 
 
 # -- Endpoints ---------------------------------------------------------
@@ -111,7 +176,32 @@ def health_check(request: Request):
     return {
         "status": "healthy",
         "documents_indexed": store.total_vectors if store else 0,
+        "mode": SENTINEL_MODE,
     }
+
+
+@app.get("/health")
+def readiness_check(request: Request):
+    """Readiness includes the cloud database, not just the HTTP process."""
+    if SENTINEL_MODE == "cloud":
+        from app.cloud import db
+        try:
+            with db.connect() as conn:
+                conn.execute("SELECT 1")
+                from app.cloud.settings import PROVIDER
+                if PROVIDER == "aws" and not conn.execute("""SELECT 1 FROM worker_status
+                    WHERE name='primary' AND ready AND updated_at>now()-interval '150 seconds'""").fetchone():
+                    raise HTTPException(status_code=503, detail="Background processor is unavailable")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Cloud database is unavailable") from exc
+    elif getattr(request.app.state, "store", None) is None:
+        raise HTTPException(status_code=503, detail="Document index is unavailable")
+    result = {"status": "ready", "mode": SENTINEL_MODE}
+    if SENTINEL_MODE == "cloud" and os.getenv("SENTINEL_READ_ONLY", "false").lower() == "true":
+        result["writes_paused"] = True
+    return result
 
 
 @app.post("/query", response_model=QueryResponse)

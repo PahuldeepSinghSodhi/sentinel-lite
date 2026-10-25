@@ -22,30 +22,41 @@ on:
     branches: [master, main]
 
 jobs:
+  recovery:
+    name: Recovery safety tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements-recovery.txt
+      - run: python -m unittest discover -s scripts -p test_recovery.py -v
+
   test:
     name: Run Tests & Evaluation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/aws/requirements.lock') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
       - name: Install backend dependencies
         working-directory: backend
-        run: pip install -r requirements.txt
+        run: pip install --require-hashes --extra-index-url https://download.pytorch.org/whl/cpu -r aws/requirements.lock
 
       # ---- Unit & Integration Tests ----
       - name: Run comprehensive test suite
@@ -75,8 +86,12 @@ jobs:
         working-directory: backend
         run: python -m unittest tests.test_cases tests.test_benchmark -v
 
+      - name: Run cloud security and mode-isolation smoke tests
+        working-directory: backend
+        run: python -m unittest tests.test_cloud tests.test_aws tests.test_sample_uploads tests.test_modal_dispatch -v
+
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -86,6 +101,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build and lint frontend
+      - name: Test, build and lint frontend
         working-directory: frontend
-        run: npm run build && npm run lint
+        run: npm test && npm run build && npm run lint

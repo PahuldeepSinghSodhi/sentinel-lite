@@ -1,0 +1,172 @@
+Sentinel: deployment comparison, project journey and résumé source brief
+
+Prepared October 25, 2026, from the checked-out deployment code, recorded live
+qualification results, deployment evidence and the owner's post-migration
+feedback. This describes the deployed website and the AWS migration source
+published with this repository update. No new load test was run to prepare this
+brief, and the retired service was not restarted.
+
+What changed and why
+
+Sentinel began as a local procurement-review application and then became an
+invite-only website on Vercel, Modal and Supabase. That deployment demonstrated
+the cloud workflow within a strict free-tier budget. Its API and background
+worker were configured to scale down after a 10-second idle window, with no
+minimum warm container count. Although embedding weights were baked into the
+image, starting a new worker could still require Python imports and loading
+the model into memory.
+
+The AWS deployment keeps the API and CPU worker running on one EC2 t3.small
+(2 vCPU, 2 GiB). The embedding model stays warm after startup. Private RDS,
+private S3, Cognito and Secrets Manager replace the previous Supabase services.
+Vercel remains the frontend host, and the selected external provider still
+generates requested AI answers. The owner's post-migration observation is that
+navigation, content loading and AI answers feel substantially more responsive.
+
+The likely improvement is reduced startup and application overhead. This is
+an architectural explanation, not a measured attribution of every saved
+millisecond. AWS does not host the Groq model, and the migration does not prove
+an increase in model intelligence, accuracy or tokens generated per second.
+
+Previous deployment versus current deployment
+
+| Dimension | Previous Modal/Supabase deployment | Current AWS deployment | Meaning for this project |
+|---|---|---|---|
+| Runtime readiness | On-demand API and worker, 10-second idle scale-down configuration | Always-running API and warmed worker | Avoids normal idle scale-to-zero startup while the host is healthy; restarts still require initialization |
+| Backend capacity | Modal API configured for 0.5 CPU / 2 GiB; worker for 1 CPU / 4 GiB, each capped at one container | One shared t3.small, 2 vCPU / 2 GiB, with separate container limits | Smaller total memory budget was qualified against the tested workload; this is not a claim of more raw compute |
+| Background processing | Durable PostgreSQL jobs dispatched to Modal, with hourly recovery | Durable PostgreSQL leased jobs served by a resident worker | Background work existed before; the migration changes execution and recovery management |
+| Database | Supabase-managed PostgreSQL | Private Single-AZ RDS PostgreSQL | Explicit VPC/security-group boundaries and database operations |
+| Private files | Supabase private Storage | Private S3, direct authorized uploads and short-lived signed downloads | Durable private evidence and artifacts remain available independently of containers |
+| Login | Supabase Auth email links | Cognito email codes via SES | Account authentication moved to AWS; invitation and ownership checks remain enforced |
+| Saved provider keys | Server-side Supabase Vault | Owner-specific Secrets Manager references | Secret storage moved; plaintext keys were not copied through migration backups |
+| UI continuity | Account-aware session continuity was already deployed October 22 | Retained and verified against real AWS services in Chrome | No repeated entry check on same-account refresh/tab return; this is also a frontend improvement, not an AWS-only benefit |
+| Operations | Provider logs and hourly abandoned-job recovery | CloudWatch, 12 alarms, five-minute EventBridge/SSM checks, email alerts and recovery scheduling | More explicit operating and recovery evidence |
+| Cost and idle use | Scale-to-zero reduced idle consumption within historical free-plan caps | Running compute/database consume credits even without visitors | More predictable demo readiness at a higher idle resource cost; not permanently free |
+| Scaling and resilience | Managed function autoscaling, constrained by the project's configured caps | One application host and one Single-AZ database | No automatic multi-host scaling or high availability is claimed |
+
+Modal also supports keeping containers warm; the observed difference reflects
+Sentinel's chosen configurations and cost constraints, rather than proof that
+one provider is universally faster. Sources: Modal cold-start documentation (https://modal.com/docs/guide/cold-start).
+The EC2 T3 family is burstable, so sustained heavy CPU work requires capacity
+and credit monitoring: AWS burstable-instance documentation (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances.html).
+
+Recorded KPIs and their boundaries
+
+| KPI | Recorded AWS result | Measurement boundary |
+|---|---|---|
+| Live hosted document answer | 2.466 seconds, three source citations, answer saved | One main-domain workflow observation; external provider, network and document context affect latency |
+| Uncached AI investigation | 2.392 seconds, result saved | One recorded qualification run; not a percentile |
+| 2,400-row detector runtime | 1,520 / 1,788 / 2,402 ms | Three synthetic runs measured inside the detector timer |
+| Queued completion wait for those scans | 4.398 / 6.261 / 6.290 seconds | Includes job waiting, polling and network; distinct from detector runtime |
+| Concurrent case-list requests | About 0.4–0.5 seconds once warm; initial request about 2.1 seconds | Requests from the operator's computer to Sydney during scan qualification |
+| Small-case preparation | About 4.84 seconds total | Synthetic 12-row qualification case |
+| 2,400-row preparation | About 57.81 seconds total | Background indexing; do not describe all operations as subsecond |
+| Chrome tab continuity | Three same-window tab returns plus native token refresh; no extra /me checks before reload | Selected case and unsent draft retained; zero page errors or legacy backend requests in this smoke check |
+| Recovery | Encrypted application backup, isolated row/file restoration and off-account archive verified | Does not restore a whole AWS account or all authentication credentials |
+| Migration readiness | 24 of 24 final audit checks passed | Dated migration gates, not an independent security certification |
+| Scheduled health monitoring | Three automatic five-minute executions verified successful | Backup document also manually exercised; first automatic nightly backup was still pending at cutover |
+
+The historical Modal walkthrough recorded an initial small-case scan of
+21,748 ms. The AWS small-case qualification recorded a 239 ms detector timer
+and about 2.453 seconds waiting for job completion. These observations were
+made on different deployments with different measurement boundaries and
+startup/cache conditions. Do not divide them to claim a speedup percentage.
+There is no matched old hosted-AI timing or comparable p50/p95 dataset.
+
+Sentinel journey
+
+- Local foundation: Built a FastAPI/React procurement-review application
+  using SQLite, sentence-transformers/FAISS and local Ollama. Combined explicit
+  anomaly rules, evidence locations, saved review decisions and PDF reports.
+- October 20, 2026 — First hosted beta: Deployed the Vercel frontend,
+  Modal API/background processing and Supabase authentication/database/private
+  storage for invited reviewers.
+- October 21 — Workflow validation: Exercised a synthetic upload-to-report
+  journey, including 12 transaction rows, nine findings, a saved decision and
+  evidence references. Fixed UUID handling, polling and PDF issues.
+- October 22 — Session continuity: Deployed account-aware invitation
+  approval and structured access-error handling so same-account auth events
+  preserve an open workspace. Server-side invitation enforcement remained.
+- October 24 — Recovery baseline: Checkpointed the source, created encrypted
+  backups excluding plaintext provider keys, verified row/file integrity and
+  tested isolated restoration before AWS cutover.
+- October 25 — AWS migration and promotion: Provisioned AWS application,
+  data, identity, secrets and operations services; qualified the preview;
+  paused writes and drained jobs; reconciled the source; verified recovery;
+  promoted the main Vercel domain and resumed AWS writes. Stopped the legacy
+  Modal application while preserving the original data for recovery.
+- Post-cutover observation: The owner reported noticeably smoother site
+  navigation and faster-feeling AI responses. This is user feedback, separate
+  from the controlled timings above.
+
+Reusable brief for a résumé or portfolio LLM
+
+Use the following as verified project context. Present completed work in the
+past tense, tailor the emphasis to the role, and use only the supplied metrics.
+Do not infer business savings, real-world fraud accuracy, uptime percentages
+or a before/after performance multiplier.
+
+Project: Sentinel-Lite — Evidence-backed procurement review and document
+intelligence, with a deployed Vercel frontend and AWS backend.
+
+Purpose: Help a reviewer inspect transaction/rate anomalies, trace findings
+to CSV rows or document locations, record decisions, ask cited questions and
+export a review report. Numerical anomaly checks run in application code;
+external AI is used for requested explanations and document answers.
+
+Completed cloud engineering: Migrated a previously deployed Modal/Supabase
+backend to AWS: FastAPI and a warmed CPU worker on EC2; images in ECR; API
+Gateway JWT authorization and private VPC integration; private RDS PostgreSQL;
+private S3; Cognito and SES email-code login; provider credentials in Secrets
+Manager; IAM instance roles; CloudWatch/SNS monitoring; EventBridge Scheduler
+and fixed SSM documents for health checks and encrypted recovery copies.
+Retained the React/Vite frontend on Vercel and external hosted AI providers.
+
+Engineering decisions: Kept the embedding model warm to improve readiness
+for low-traffic interview demonstrations. Used durable PostgreSQL job leases
+and retry keys for slow operations. Preserved account/invitation/ownership
+boundaries, direct authorized uploads and signed private downloads. Isolated
+the database and application ingress, used verified database TLS and encrypted
+storage, and excluded plaintext keys from source control and backups. Retained
+workspace state across same-account auth events while revocation still takes
+effect on the next protected request.
+
+Validation: Completed 37 frontend tests, frontend lint/production build,
+backend cloud/AWS checks, nine recovery tests, real Chrome continuity checks
+and a 24-check final migration audit. Verified live AI answers, an uncached
+investigation, cross-account denial, private reports and backup restoration.
+Three synthetic 2,400-row scans took 1.52–2.40 seconds inside the detector;
+queued completion waits were 4.40–6.29 seconds. Concurrent warm case-list
+requests were around 0.4–0.5 seconds. One live document answer completed in
+2.47 seconds with three citations. These are controlled observations, not SLAs.
+
+Migration discipline: Preserved a recoverable baseline, verified source
+data and object hashes, tested isolated restores and preview frontend rollback,
+froze writes and drained queues before handoff, promoted the reviewed frontend,
+and verified main-domain behavior before retiring the old compute service.
+
+Tradeoffs: One application host and a Single-AZ database; no high
+availability or broad concurrency claim. Always-running resources consume
+finite credits. External AI quotas still apply. AWS is deployed in Sydney.
+The architecture uses PostgreSQL jobs, not SQS, and does not use ECS/Fargate,
+Lambda, Kubernetes or Terraform. Google/GitHub OAuth is disabled.
+
+Suggested résumé bullets:
+
+- Migrated a deployed procurement-review application from Modal/Supabase to
+  AWS EC2, RDS, S3, Cognito and Secrets Manager while retaining a Vercel frontend.
+- Built a warmed CPU-worker runtime with durable PostgreSQL job leases;
+  qualified three synthetic 2,400-row scans at 1.52–2.40 s detector runtime
+  while serving concurrent metadata requests.
+- Enforced invited-account and case-ownership checks, private signed file
+  access and account-aware session continuity; passed real Chrome refresh and
+  tab-return checks without repeated entry verification.
+- Configured CloudWatch alerts and scheduled operational checks, and verified
+  encrypted backups through isolated database/file restoration before cutover.
+
+Evidence references: deployment status (aws-execution-status.md),
+architecture and measurement limits (aws-architecture.md),
+recovery procedure (aws-recovery.md), portfolio notes (portfolio-notes.md),
+the archived Modal/Supabase runbook (cloud-deployment.md), and modal_app.py.
+Private test evidence stays outside the repository in the protected recovery
+directory; do not publish credentials, account sessions or case contents.

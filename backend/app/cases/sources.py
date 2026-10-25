@@ -6,6 +6,7 @@ import pandas as pd
 from PyPDF2 import PdfReader
 
 from app.cases import store
+from app.config import SENTINEL_MODE
 from app.embeddings.model import get_embedding_model
 from app.ingestion.chunker import chunk_text
 from app.vectorstore.faiss_store import FAISSStore
@@ -74,6 +75,17 @@ def build_index(case_id: str) -> FAISSStore:
     for index, passage in enumerate(passages):
         passage["chunk_index"] = index
     contract_passages = clauses.contract_passages(case_id)
+    if SENTINEL_MODE == "cloud":
+        from app.cloud.settings import PROVIDER
+        if PROVIDER == "aws":
+            from app.cloud import store as cloud_store
+            limits = cloud_store.usage()
+            # Float32 MiniLM vectors plus their serialized metadata are a lower
+            # bound. Reject impossible indexes before allocating embeddings.
+            required = (len(passages) + len(contract_passages)) * 384 * 4
+            required += len(json.dumps(passages + contract_passages).encode())
+            if required + limits["used_bytes"] > limits["limit_bytes"]:
+                raise ValueError("The searchable index would exceed your cloud storage limit")
     embeddings = get_embedding_model().embed(
         [item["text"] for item in passages + contract_passages]
     )
@@ -87,6 +99,9 @@ def build_index(case_id: str) -> FAISSStore:
 
 
 def load_index(case_id: str) -> FAISSStore:
+    if SENTINEL_MODE == "cloud":
+        from app.cloud import store as cloud_store
+        cloud_store.ensure_index(case_id, "index")
     return FAISSStore.load(str(index_path(case_id)))
 
 

@@ -32,10 +32,15 @@ backend/data/evaluation_public/
 # Node modules
 frontend/node_modules/
 frontend/dist/
+frontend/test-artifacts/
+frontend/.vercel/
+.vercel/
 
 # Environment variables
 .env
 .env.local
+backend/.env.cloud
+frontend/.env.cloud
 
 # Logs
 *.log
@@ -43,3 +48,9 @@ frontend/dist/
 # Model cache (large files)
 *.bin
 *.onnx
+
+# Recovery data and keys must never be committed
+recovery-private/
+*.key.dpapi
+*.recovery-key
+*.enc

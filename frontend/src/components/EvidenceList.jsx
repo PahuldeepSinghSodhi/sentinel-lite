@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileSearch, Loader2 } from "lucide-react";
-import { api, BASE_URL } from "../api";
+import { api, BASE_URL, openContractPdf } from "../api";
+import { CLOUD_MODE } from "../cloud";
 
 export default function EvidenceList({ caseId, items = [], title = "Supporting evidence", anchorPrefix }) {
   const [opened, setOpened] = useState({});
@@ -40,8 +41,11 @@ export default function EvidenceList({ caseId, items = [], title = "Supporting e
           key={`${item.source}-${item.location}-${index}`}>
           {pdfHref ? <div className="evidence-link evidence-pdf">
             <FileSearch size={15} />
-            <a href={pdfHref} target="_blank" rel="noopener noreferrer">
-              {item.source} · {item.location || "Location unavailable"}</a>
+            {CLOUD_MODE ? <button type="button" onClick={() => openContractPdf(caseId, item.page)
+              .catch((error) => setOpened((previous) => ({ ...previous, [index]: { text: error.message } })))}>
+              {item.source} · {item.location || "Location unavailable"}</button> :
+              <a href={pdfHref} target="_blank" rel="noopener noreferrer">
+                {item.source} · {item.location || "Location unavailable"}</a>}
             <button type="button" onClick={() => show(index, item)} aria-expanded={Boolean(opened[index])}>
               {loading[index] ? "Loading…" : opened[index] ? "Hide text" : "View extracted text"}</button>
           </div> : canOpen ? <button type="button" className="evidence-link" onClick={() => show(index, item)}
