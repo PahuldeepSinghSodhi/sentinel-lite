@@ -1158,6 +1158,9 @@ h1 {
 }
 .spin {
   animation: spin 1s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+  flex-shrink: 0;
 }
 @keyframes spin {
   to {
@@ -1610,13 +1613,15 @@ h1 {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.spin),
   *::before,
   *::after {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
   }
+  /* Keep essential progress visible without restoring decorative motion. */
+  .spin { animation-duration: 2s; }
 }
 
 /* Case workflow additions retain the existing Sentinel visual system. */
