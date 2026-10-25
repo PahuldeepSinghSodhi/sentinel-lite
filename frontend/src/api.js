@@ -61,42 +61,79 @@ async function request(path, { timeout = 125000, accessSession, ...options } = {
   }
 }
 
-export function api(path, { silent = false, ...options } = {}) {
+export function api(path, { silent = false, jobOptions, ...options } = {}) {
   return trackActivity(async () => {
     const response = await request(path, options);
     const data = await response.json().catch(() => ({}));
     await ensureAccount(requestAccounts.get(response));
-    if (response.status === 202 && data.job_id) return awaitJob(data.job_id, requestAccounts.get(response));
+    if (response.status === 202 && data.job_id) return awaitJob(data.job_id, requestAccounts.get(response), jobOptions);
     return data;
   }, silent);
 }
 
-async function awaitJob(jobId, origin) {
-  const deadline = Date.now() + 10 * 60 * 1000;
+async function awaitJob(jobId, origin, { waitMs = 10 * 60 * 1000, deadlineAt, onProgress, returnPending = false } = {}) {
+  const deadline = deadlineAt || Date.now() + waitMs;
   while (Date.now() < deadline) {
     await ensureAccount(origin);
-    const job = await (await request(`/jobs/${jobId}`)).json();
+    let job;
+    try {
+      job = await (await request(`/jobs/${jobId}`, { timeout: Math.max(1,Math.min(15000,deadline-Date.now())) })).json();
+    } catch (error) {
+      if (returnPending && ((!error.code && !error.status) || error.status >= 500)) {
+        await ensureAccount(origin);
+        return { pending:true, job_id:jobId, message:"Could not check validation. Check status to reconnect." };
+      }
+      throw error;
+    }
+    await ensureAccount(origin);
     if (job.status === "completed") return job.result_json || {};
-    if (job.status === "failed") throw new Error(job.error || "Processing failed. Please retry.");
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    if (job.status === "failed") {
+      const error=new Error(job.error || "Processing failed. Please retry.");
+      error.code=job.error_code;
+      throw error;
+    }
+    onProgress?.({stage:job.status === "running" ? "validating" : "queued",job_id:jobId});
+    await new Promise(resolve => setTimeout(resolve, Math.max(0,Math.min(1500,deadline-Date.now()))));
   }
+  if (returnPending) return {pending:true,job_id:jobId,message:"Validation is continuing in the background. You can leave and check status later."};
   throw new Error("Processing is continuing. You can check the case again shortly.");
 }
 
-export async function uploadFile(caseId, kind, file) {
+export function cancelUpload(caseId, uploadId) {
+  return api(`/cases/${caseId}/uploads/${uploadId}`,{method:"DELETE",timeout:10000,silent:true});
+}
+
+export async function checkUpload(jobId, onProgress) {
+  return trackActivity(async()=>awaitJob(jobId,await requestSession(),{waitMs:120000,onProgress,returnPending:true}));
+}
+
+export async function uploadFile(caseId, kind, file, onProgress) {
+  const extension=file.name.split(".").pop().toLowerCase();
+  const allowed=kind === "contract" ? ["pdf","txt"] : ["csv"];
+  if (!file.size || file.size>10*1024*1024) throw new Error("Choose a nonempty file up to 10 MiB.");
+  if (!allowed.includes(extension)) throw new Error(`Choose a ${allowed.join(" or ").toUpperCase()} file for this section.`);
   if (CLOUD_PROVIDER === "aws") return trackActivity(async () => {
     const origin = await requestSession();
-    const ticket = await api(`/cases/${caseId}/uploads/${kind}`, { method:"POST", body:JSON.stringify({filename:file.name,size:file.size}) });
+    onProgress?.({stage:"uploading"});
+    const ticket = await api(`/cases/${caseId}/uploads/${kind}`, { method:"POST",timeout:15000,accessSession:origin, body:JSON.stringify({filename:file.name,size:file.size}) });
     const endpoint = new URL(ticket.url);
     if (endpoint.protocol !== "https:" || !endpoint.hostname.endsWith(".amazonaws.com")) throw new Error("Private upload destination is invalid");
     const form = new FormData();
     Object.entries(ticket.fields).forEach(([key,value]) => form.append(key,value));
     form.append("file",file);
     await ensureAccount(origin);
-    const response = await fetch(ticket.url,{method:"POST",body:form,signal:AbortSignal.timeout(120000)});
-    if (!response.ok) throw new Error("Upload did not finish. Please choose the file again.");
+    try {
+      const response = await fetch(ticket.url,{method:"POST",body:form,signal:AbortSignal.timeout(120000)});
+      if (!response.ok) throw new Error("Upload did not finish. Please choose the file again.");
+    } catch (error) {
+      await ensureAccount(origin);
+      await cancelUpload(caseId,ticket.upload_id).catch(()=>{});
+      throw new Error(error.name === "TimeoutError" ? "File transfer timed out. Please choose the file again." : "File transfer failed. Check your connection and choose the file again.");
+    }
     await ensureAccount(origin);
-    return api(`/cases/${caseId}/uploads/${ticket.upload_id}/confirm`,{method:"POST"});
+    onProgress?.({stage:"queued",upload_id:ticket.upload_id});
+    return api(`/cases/${caseId}/uploads/${ticket.upload_id}/confirm`,{method:"POST",timeout:15000,accessSession:origin,
+      jobOptions:{deadlineAt:Date.now()+120000,onProgress,returnPending:true}});
   });
   const body = new FormData();
   body.append("file", file);

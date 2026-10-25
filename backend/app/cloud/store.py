@@ -75,9 +75,11 @@ def create_case(name: str = "New review") -> dict:
     owner_id = current_user()["id"]
     with db.connect() as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7281901)")
-        count = conn.execute("SELECT count(*) AS n FROM cases WHERE owner_id = %s", (owner_id,)).fetchone()["n"]
+        sample_filter = " AND sample_version IS NULL" if PROVIDER == "aws" else ""
+        count = conn.execute("SELECT count(*) AS n FROM cases WHERE owner_id = %s" + sample_filter, (owner_id,)).fetchone()["n"]
         if count >= CASE_LIMIT:
-            raise ValueError(f"Cloud beta allows at most {CASE_LIMIT} cases per account")
+            noun = "custom cases" if PROVIDER == "aws" else "cases"
+            raise ValueError(f"Cloud beta allows at most {CASE_LIMIT} {noun} per account")
         case_id = str(uuid4())
         conn.execute("INSERT INTO cases (id, owner_id, name, status) VALUES (%s, %s, %s, 'draft')",
                      (case_id, owner_id, clean_name))
@@ -114,13 +116,20 @@ def _aws_case_result(conn, row):
                   "question":q["question"], "answer":q["answer"], "sources":q["sources_json"],
                   "confidence":q["confidence_json"], "presentation":q["presentation_json"]}
                  for q in conn.execute("SELECT * FROM questions WHERE case_id=%s ORDER BY created_at,id", (case_id,))]
-    job = conn.execute("SELECT id,kind,status,error FROM jobs WHERE case_id=%s ORDER BY created_at DESC LIMIT 1", (case_id,)).fetchone()
+    job = conn.execute("SELECT id,kind,status,error,error_code FROM jobs WHERE case_id=%s ORDER BY created_at DESC,id DESC LIMIT 1", (case_id,)).fetchone()
+    uploads = {}
+    for upload in conn.execute("""SELECT DISTINCT ON (u.kind) u.id,u.kind,u.filename,u.status,u.error,u.error_code,j.id AS job_id,j.status AS job_status
+        FROM uploads u LEFT JOIN LATERAL (SELECT id,status FROM jobs WHERE case_id=u.case_id AND kind='upload'
+        AND payload_json->>'upload_id'=u.id::text ORDER BY created_at DESC,id DESC LIMIT 1) j ON true
+        WHERE u.case_id=%s ORDER BY u.kind,u.created_at DESC,u.id DESC""", (case_id,)):
+        uploads[upload["kind"]] = {**upload,"id":str(upload["id"]),"job_id":str(upload["job_id"]) if upload["job_id"] else None}
     pending = bool(conn.execute("SELECT 1 FROM uploads WHERE case_id=%s AND status IN ('reserved','queued') AND expires_at>now() LIMIT 1", (case_id,)).fetchone())
     return {"id":case_id,"name":row["name"],"status":row["status"],"revision":row["revision"],
+            "sample_version":row.get("sample_version"),"is_sample":bool(row.get("sample_version")),"uploads":uploads,
             "created_at":row["created_at"],"started_at":row["started_at"],"files":files,"scans":scans,"questions":questions,
-            "job": {"job_id":str(job["id"]),"kind":job["kind"],"status":job["status"],"error":job["error"]} if job else None,
+            "job": {"job_id":str(job["id"]),"kind":job["kind"],"status":job["status"],"error":job["error"],"error_code":job["error_code"]} if job else None,
             "ready":row["status"]=="active", "can_report":bool(scans or questions),
-            "can_start":row["status"]=="draft" and not pending and {"transactions","rate_card"}.issubset(files)}
+            "can_start":not row.get("sample_version") and row["status"]=="draft" and not pending and {"transactions","rate_card"}.issubset(files)}
 
 
 def list_cases() -> list[dict]:
@@ -145,11 +154,22 @@ def usage() -> dict:
         own, total = _usage(conn, current_user()["id"])
         return {"used_bytes": own, "limit_bytes": USER_LIMIT, "global_used_bytes": total,
                 "global_limit_bytes": GLOBAL_LIMIT, "case_count": conn.execute(
-                    "SELECT count(*) AS n FROM cases WHERE owner_id = %s", (current_user()["id"],)
+                    "SELECT count(*) AS n FROM cases WHERE owner_id = %s" + (" AND sample_version IS NULL" if PROVIDER == "aws" else ""), (current_user()["id"],)
                 ).fetchone()["n"], "case_limit": CASE_LIMIT}
 
 
-def save_file(case_id: str, kind: str, filename: str, data: bytes) -> dict:
+def _check_file_write(conn, case, sample_job=False):
+    if case.get("sample_version"):
+        allowed = sample_job and current_job() and conn.execute("SELECT 1 FROM jobs WHERE id=%s AND case_id=%s AND kind='demo' AND status='running'", (current_job(),case["id"])).fetchone()
+        if not allowed:
+            raise ValueError("Sample files are fixed. Create a custom case to upload your own files")
+        if case["status"] not in {"draft","starting"}:
+            raise ValueError("Sample review is already active")
+    elif case["status"] != "draft":
+        raise ValueError("Files are locked after a review starts. Create a new case for new uploads")
+
+
+def save_file(case_id: str, kind: str, filename: str, data: bytes, *, sample_job=False) -> dict:
     from app.cases.store import validate_file
     extension, count = validate_file(kind, filename, data)
     if PROVIDER == "aws" and extension == ".csv" and count * 384 * 4 + len(data) > USER_LIMIT:
@@ -162,15 +182,13 @@ def save_file(case_id: str, kind: str, filename: str, data: bytes) -> dict:
         # Validate ownership and case state before touching private Storage.
         with db.connect() as conn:
             case = _owner(conn, case_id)
-            if case["status"] != "draft":
-                raise ValueError("Files are locked after a review starts. Create a new case for new uploads")
+            _check_file_write(conn, case, sample_job)
         objects.put(path, data)
         uploaded = True
         with db.connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(7281901)")
             case = _owner(conn, case_id)
-            if case["status"] != "draft":
-                raise ValueError("Files are locked after a review starts. Create a new case for new uploads")
+            _check_file_write(conn, case, sample_job)
             old = conn.execute("SELECT path, size FROM case_files WHERE case_id = %s AND kind = %s",
                                (case_id, kind)).fetchone()
             own, total = _usage(conn, owner_id)

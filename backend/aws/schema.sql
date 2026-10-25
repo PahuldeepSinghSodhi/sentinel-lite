@@ -107,6 +107,11 @@ ALTER TABLE public.case_artifacts ADD COLUMN IF NOT EXISTS revision bigint;
 ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS payload_json jsonb NOT NULL DEFAULT '{}';
 ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS result_json jsonb;
 ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS request_key text;
+ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS error_code text;
+ALTER TABLE public.cases ADD COLUMN IF NOT EXISTS sample_version text;
+CREATE UNIQUE INDEX IF NOT EXISTS cases_one_sample_per_owner ON public.cases(owner_id) WHERE sample_version IS NOT NULL;
+ALTER TABLE public.jobs DROP CONSTRAINT IF EXISTS jobs_kind_check;
+ALTER TABLE public.jobs ADD CONSTRAINT jobs_kind_check CHECK (kind IN ('start','scan','upload','question','investigate','report','demo'));
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_request_key ON public.jobs(owner_id,request_key) WHERE request_key IS NOT NULL;
 CREATE TABLE IF NOT EXISTS public.uploads (
  id uuid PRIMARY KEY, case_id uuid NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
@@ -116,6 +121,8 @@ CREATE TABLE IF NOT EXISTS public.uploads (
  created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL DEFAULT now()+interval '15 minutes'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uploads_pending_kind ON public.uploads(case_id,kind) WHERE status IN ('reserved','queued');
+ALTER TABLE public.uploads ADD COLUMN IF NOT EXISTS error text;
+ALTER TABLE public.uploads ADD COLUMN IF NOT EXISTS error_code text;
 CREATE TABLE IF NOT EXISTS public.worker_status (name text PRIMARY KEY, updated_at timestamptz NOT NULL, ready boolean NOT NULL);
 CREATE TABLE IF NOT EXISTS public.recovery_model_preferences (
  owner_id uuid PRIMARY KEY REFERENCES public.app_users(id), provider text NOT NULL, model text NOT NULL, updated_at timestamptz

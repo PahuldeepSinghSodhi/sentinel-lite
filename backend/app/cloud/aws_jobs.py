@@ -1,5 +1,6 @@
 """Durable AWS operations share the PostgreSQL queue and serial warmed worker."""
 from uuid import UUID, uuid4
+from contextlib import nullcontext
 
 from psycopg.types.json import Jsonb
 
@@ -9,14 +10,14 @@ from app.cloud.auth import current_user
 KINDS = {"start", "scan", "upload", "question", "investigate", "report"}
 
 
-def queue(case_id, kind, payload=None, request_key=None):
+def queue(case_id, kind, payload=None, request_key=None, *, connection=None):
     if kind not in KINDS:
         raise ValueError("Unknown operation")
     case_id = str(UUID(str(case_id)))
     payload = payload or {}
     if request_key is not None:
         request_key = str(UUID(request_key))
-    with db.connect() as conn:
+    with (nullcontext(connection) if connection is not None else db.connect()) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",(str(current_user()["id"]),))
         case = conn.execute("SELECT * FROM cases WHERE id=%s AND owner_id=%s FOR UPDATE",(case_id,current_user()["id"])).fetchone()
         if not case:
@@ -56,6 +57,9 @@ def perform(job):
     from app.cases import investigation, questions, report, sources, workflow
     case_id = str(job["case_id"])
     payload = job["payload_json"]
+    if job["kind"] == "demo":
+        from app.cloud.samples import prepare_sample
+        return None, prepare_sample(case_id)
     if job["kind"] == "start":
         sources.build_index(case_id)
         store.sync_artifacts(case_id)

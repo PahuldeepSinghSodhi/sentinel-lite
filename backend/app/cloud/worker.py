@@ -1,5 +1,6 @@
 """Durable review worker used by the on-demand Modal processing function."""
 import logging
+import os
 import shutil
 import threading
 import time
@@ -71,8 +72,13 @@ def run_once() -> bool:
         frame = traceback.extract_tb(exc.__traceback__)[-1]
         log.error("Job %s failed (%s at %s:%s)", job["id"],
                   type(exc).__name__, Path(frame.filename).name, frame.lineno)
-        if PROVIDER == "aws" and str(exc) == "Choose and test an AI provider in Settings first":
-            jobs.fail({**job,"attempts":3},public_error="Choose and test an AI provider in Settings first")
+        from app.cloud.uploads import UploadValidationError
+        if PROVIDER == "aws" and isinstance(exc, UploadValidationError):
+            jobs.fail(job, public_error=str(exc), terminal=True, error_code="upload_invalid")
+        elif PROVIDER == "aws" and job["kind"] == "demo" and isinstance(exc, ValueError):
+            jobs.fail(job, public_error=str(exc), terminal=True, error_code="sample_invalid")
+        elif PROVIDER == "aws" and str(exc) == "Choose and test an AI provider in Settings first":
+            jobs.fail(job,public_error="Choose and test an AI provider in Settings first",terminal=True)
         else:
             jobs.fail(job)
         return True
@@ -90,7 +96,7 @@ def run_once() -> bool:
             import ctypes
             import gc
             gc.collect()
-            trim = getattr(ctypes.CDLL(None), "malloc_trim", None)
+            trim = getattr(ctypes.CDLL(None), "malloc_trim", None) if os.name != "nt" else None
             if trim:
                 trim(0)
 

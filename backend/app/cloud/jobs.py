@@ -47,7 +47,7 @@ def get(job_id: str) -> dict:
     with db.connect() as conn:
         columns = "id, case_id, kind, status, attempts, result_id, error, created_at, updated_at"
         if PROVIDER == "aws":
-            columns += ", result_json"
+            columns += ", result_json, error_code"
         row = conn.execute(f"SELECT {columns} FROM jobs WHERE id = %s AND owner_id = %s",
                            (job_id, current_user()["id"])).fetchone()
     if not row:
@@ -76,7 +76,7 @@ def claim() -> dict | None:
         for item in exhausted:
             if PROVIDER == "aws" and item["kind"] == "upload":
                 conn.execute("UPDATE uploads SET status='failed' WHERE id=(SELECT (payload_json->>'upload_id')::uuid FROM jobs WHERE id=%s)", (item["id"],))
-            if item["kind"] == "start":
+            if item["kind"] in {"start","demo"}:
                 conn.execute("UPDATE cases SET status = 'draft' WHERE id = %s AND status = 'starting'",
                              (item["case_id"],))
         row = conn.execute("""SELECT * FROM jobs WHERE
@@ -90,6 +90,7 @@ def claim() -> dict | None:
                         leased_until = now() + interval '15 minutes', updated_at = now()
                         WHERE id = %s""", (row["id"],))
         row["attempts"] += 1
+        row["status"] = "running"
         return row
 
 
@@ -111,8 +112,8 @@ def extend(job_id: str) -> None:
                         WHERE id = %s AND status = 'running'""", (job_id,))
 
 
-def fail(job: dict, public_error: str | None = None) -> None:
-    final = job["attempts"] >= 3
+def fail(job: dict, public_error: str | None = None, *, terminal=False, error_code=None) -> None:
+    final = terminal or job["attempts"] >= 3
     with db.connect() as conn:
         conn.execute("""UPDATE jobs SET status = %s,
                         leased_until = CASE WHEN %s THEN null ELSE now() + interval '1 minute' END,
@@ -120,8 +121,11 @@ def fail(job: dict, public_error: str | None = None) -> None:
                      ("failed" if final else "queued", final,
                       (public_error or "Processing failed; retry or contact the administrator") if final else None,
                       job["id"]))
-        if final and job["kind"] == "start":
+        if PROVIDER == "aws":
+            conn.execute("UPDATE jobs SET error_code=%s WHERE id=%s", (error_code if final else None,job["id"]))
+        if final and job["kind"] in {"start","demo"}:
             conn.execute("UPDATE cases SET status = 'draft' WHERE id = %s AND status = 'starting'",
                          (job["case_id"],))
-        if final and PROVIDER == "aws" and job["kind"] == "upload":
-            conn.execute("UPDATE uploads SET status='failed' WHERE id=%s", (job["payload_json"]["upload_id"],))
+    if final and PROVIDER == "aws" and job["kind"] == "upload":
+        from app.cloud.uploads import fail_upload
+        fail_upload(job["payload_json"]["upload_id"], public_error or "Validation could not finish; choose the file again", error_code or "upload_failed")

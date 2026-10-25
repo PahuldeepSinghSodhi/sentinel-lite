@@ -1651,6 +1651,8 @@ h1 {
 .upload-placeholder { grid-column: 2; color: #95a095; font-size: 10px; }
 .upload-action { grid-column: 3; grid-row: 1 / span 2; position: relative; overflow: hidden; cursor: pointer; }
 .upload-action input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.upload-slot > [role="status"], .upload-slot > [role="alert"], .upload-slot > p { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.upload-slot > [role="alert"] { color: #a7423b; background: #fff3f1; border-radius: 8px; padding: 10px 12px; }
 .upload-action:focus-within { outline: 3px solid #75aa8b; outline-offset: 3px; }
 .upload-footer { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px 24px; border-top: 1px solid var(--line); background: #f8faf6; }
 .upload-footer strong { font-size: 12px; }

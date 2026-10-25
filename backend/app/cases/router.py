@@ -54,12 +54,21 @@ def cases_list():
 
 @router.post("", status_code=201)
 def cases_create(payload: CreateCase):
-    return store.create_case(payload.name)
+    try:
+        return store.create_case(payload.name)
+    except Exception as exc:
+        _error(exc)
 
 
 @router.post("/demo", status_code=201)
 def cases_demo():
     """Create an independent review with the repository's sample files."""
+    if aws_mode():
+        try:
+            from app.cloud.samples import open_sample
+            return open_sample()
+        except Exception as exc:
+            _error(exc)
     case = store.create_case("Sample procurement review")
     case_id = case["id"]
     data_dir = BACKEND_DIR / "data"
@@ -250,6 +259,17 @@ def upload_confirmation(case_id: str,upload_id: str,request: Request):
     try:
         from app.cloud.uploads import confirm
         return JSONResponse(confirm(case_id,upload_id,request.headers.get("idempotency-key")),status_code=202)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.delete("/{case_id}/uploads/{upload_id}", status_code=204)
+def upload_cancel(case_id: str, upload_id: str):
+    if not aws_mode():
+        raise HTTPException(404)
+    try:
+        from app.cloud.uploads import cancel
+        cancel(case_id, upload_id)
     except Exception as exc:
         _error(exc)
 

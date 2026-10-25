@@ -147,8 +147,10 @@ if SENTINEL_MODE == "cloud":
             except Exception as exc:
                 if PROVIDER != "aws":
                     raise
-                logging.getLogger("sentinel.api").error("Request failed: %s",type(exc).__name__)
-                return JSONResponse({"detail":"This operation could not be completed; please retry"},status_code=500)
+                from uuid import uuid4
+                request_id = str(uuid4())
+                logging.getLogger("sentinel.api").error("Request %s failed (%s, %s)",request_id,request.method,type(exc).__name__)
+                return JSONResponse({"detail":"This operation could not be completed; please retry","request_id":request_id},status_code=500)
 
 # Added last so even authentication failures include the allowed browser origin.
 if SENTINEL_MODE == "cloud":

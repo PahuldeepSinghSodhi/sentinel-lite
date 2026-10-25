@@ -259,8 +259,8 @@ export default function App({ cloudUser, onSignOut }) {
           {contentLoading && <WorkspaceSkeleton />}
           <div hidden={contentLoading || workspaceState === "error"}>
           <div hidden={activeTab !== "documents"}>
-            <DocumentsTab review={review} onChange={() => loadCase(review.id)} onStart={() => navigateTo("anomaly")}
-              onNewCase={() => createCase(false)} busy={busy} />
+            <DocumentsTab key={review?.id || "empty"} review={review} onChange={() => loadCase(review.id)} onStart={() => navigateTo("anomaly")}
+              onNewCase={() => createCase(false)} onTrySample={() => createCase(true)} busy={busy} />
           </div>
           <div hidden={activeTab !== "anomaly"}>
             <AnomalyTab review={review} onChange={() => loadCase(review.id)} onViewFiles={() => navigateTo("documents")} />

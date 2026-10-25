@@ -24,7 +24,7 @@ from app.cloud.aws_clients import client
 from app.cloud.settings import BUCKET, value
 
 TABLES = ("app_users", "auth_identities", "app_invites", "cases", "case_files", "case_artifacts",
-          "jobs", "scans", "findings", "investigations", "questions", "recovery_model_preferences")
+          "jobs", "uploads", "scans", "findings", "investigations", "questions", "recovery_model_preferences")
 FORMAT = "sentinel-aws-recovery-v1"
 
 
@@ -119,8 +119,9 @@ def restore_drill(prefix=None):
     if digest(sealed) != complete["manifest_sha256"]:
         raise RuntimeError("Recovery manifest hash mismatch")
     manifest = json.loads(decrypt(secret, sealed, "manifest"))
-    if manifest["format"] != FORMAT or set(manifest["tables"]) != set(TABLES):
+    if manifest["format"] != FORMAT or set(manifest["tables"]) not in (set(TABLES),set(TABLES)-{"uploads"}):
         raise ValueError("Unsupported recovery schema")
+    manifest["tables"].setdefault("uploads", [])
     master = json.loads(client("secretsmanager").get_secret_value(
         SecretId=value("BOOTSTRAP_SECRET"))["SecretString"])
     schema = "restore_" + uuid4().hex
@@ -149,9 +150,10 @@ def restore_drill(prefix=None):
                 # PostgreSQL timestamp JSON uses an offset; normalize temporal strings.
                 def normalized(row):
                     return {k: (datetime.fromisoformat(v).isoformat() if isinstance(v, str) and k in {
-                        "created_at", "updated_at", "started_at", "uploaded_at", "decided_at", "leased_until"} and v else v)
+                        "created_at", "updated_at", "started_at", "uploaded_at", "decided_at", "leased_until", "expires_at"} and v else v)
                         for k,v in row.items()}
-                if sorted(canonical(normalized(r)) for r in actual) != sorted(canonical(normalized(r)) for r in expected):
+                captured = set(expected[0]) if expected else set()
+                if sorted(canonical(normalized({k:r[k] for k in captured})) for r in actual) != sorted(canonical(normalized(r)) for r in expected):
                     raise RuntimeError("Restored table comparison failed: "+table)
             for obj in manifest["objects"]:
                 sealed = s3.get_object(Bucket=bucket, Key=prefix+obj["file"])["Body"].read()
