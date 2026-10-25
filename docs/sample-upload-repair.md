@@ -1,6 +1,8 @@
 # Sample access and upload recovery
 
 Implemented October 25, 2026, following a separate-account reproduction.
+Deployed to https://sentinel-document-intelligence.vercel.app. Implementation
+checkpoint: `6dfa5ab` on `codex/aws-migration`.
 
 ## Reproduced failures
 
@@ -42,8 +44,10 @@ Implemented October 25, 2026, following a separate-account reproduction.
 - Live invalid CSV and malformed PDF validation terminated after one attempt;
   valid CSV/TXT/PDF uploads, cancellation, retries and preserved replacements passed.
 - Concurrent confirmations returned one completed upload job. Chrome preview
-  checks covered visible errors, valid retry, persisted files after reload and
-  no page errors. Current and pre-change backups passed isolated restoration.
+  and final main-domain checks covered visible errors, valid retry, persisted
+  files after reload, source previews, private report downloads and no page
+  errors. The validation-error layout was also visually inspected. Current and
+  pre-change backups passed isolated restoration.
 
 Protected command and browser evidence is outside Git under
 `C:\Users\sodhi\SentinelRecovery\aws-migration\sample-upload-fix`.
