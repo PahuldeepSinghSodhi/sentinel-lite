@@ -26,7 +26,10 @@ def authenticated(name):
     tokens = read_session(name)
     import jwt
     if jwt.decode(tokens["IdToken"], options={"verify_signature":False})["exp"] < time.time()+180:
-        result = session().client("cognito-idp").initiate_auth(ClientId=STATE["user_pool_client"], AuthFlow="REFRESH_TOKEN_AUTH",
+        import boto3
+        from botocore import UNSIGNED
+        from botocore.config import Config
+        result = boto3.client("cognito-idp",region_name=STATE["region"],config=Config(signature_version=UNSIGNED)).initiate_auth(ClientId=STATE["user_pool_client"], AuthFlow="REFRESH_TOKEN_AUTH",
             AuthParameters={"REFRESH_TOKEN":tokens["RefreshToken"]})["AuthenticationResult"]
         tokens.update(result)
         (BASE/(name+"-session.dpapi")).write_bytes(dpapi(json.dumps(tokens).encode()))

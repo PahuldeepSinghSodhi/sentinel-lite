@@ -1,8 +1,10 @@
-# Invite-only cloud beta: Modal deployment runbook
+# Archived Modal/Supabase deployment runbook
 
-The AWS migration's recoverable starting point, backup commands, restore proof,
-current configuration, and unresolved checks are recorded in
-[Stage 0 recovery baseline](stage0-recovery.md). Stage 0 does not change this deployment.
+The main domain moved to AWS on October 25, 2026. The old Modal application and
+its hourly recovery schedule are stopped; original private Supabase data is
+retained for recovery. Use the [current AWS status](aws-execution-status.md),
+[architecture](aws-architecture.md) and [recovery instructions](aws-recovery.md).
+Everything below describes the historical deployment, not the active stack.
 
 The invite-only beta is deployed at
 <https://sentinel-document-intelligence.vercel.app>. Its API is hosted at

@@ -33,9 +33,13 @@ try {
     if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(value));
   },{key:storageKey,value:session(config.tokens)});
   const page=await context.newPage();page.setDefaultTimeout(30000);
-  const requests=[],errors=[];
+  const requests=[],errors=[],legacyBackendRequests=[];
   page.on("pageerror",e=>errors.push(e.message));
-  page.on("request",r=>{if(r.url().startsWith(config.api))requests.push({path:new URL(r.url()).pathname,method:r.method()});});
+  page.on("request",r=>{
+    const url=new URL(r.url());
+    if(/\.supabase\.co$|\.modal\.run$/.test(url.hostname))legacyBackendRequests.push(url.hostname);
+    if(r.url().startsWith(config.api))requests.push({path:url.pathname,method:r.method()});
+  });
   await page.goto(config.url);
   const chooser=page.getByRole("combobox",{name:"Select review case"});
   await chooser.waitFor();
@@ -74,9 +78,10 @@ try {
   await chooser.waitFor();
   assert.equal(meCount(),2);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({browser:"Google Chrome",services:"real AWS",tabReturns:3,
+  assert.deepEqual(legacyBackendRequests,[]);
+  console.log(JSON.stringify({browser:"Google Chrome",services:"real AWS",testedUrl:config.url,tabReturns:3,
     sameWindow:true,caseAndDraftPreserved:true,nativeRefreshPreservedWorkspace:true,
-    invitationChecksBeforeReload:1,invitationChecksAfterReload:2,consoleErrors:errors,
+    invitationChecksBeforeReload:1,invitationChecksAfterReload:2,consoleErrors:errors,legacyBackendRequests,
     requestPaths:requests},null,2));
 } finally {
   await browser?.close();

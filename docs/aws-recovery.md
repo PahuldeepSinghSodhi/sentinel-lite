@@ -35,7 +35,14 @@ reprovision/rebind Cognito subjects to canonical IDs, re-enter provider keys and
 test ownership before switching runtime references. RDS snapshot/PITR is an
 additional AWS facility with one-day Free-plan retention.
 
-## Remaining cutover sequence
+## Cutover sequence and completed handoff
+
+The main-domain migration completed on October 25, 2026. The final source was
+unchanged from the verified import; another import would have been redundant
+and could overwrite intentional AWS edits. New AWS answers/investigations and
+provider configuration were preserved. Writes are enabled on AWS. The former
+Modal application and schedule are stopped; the private source data is retained.
+The sequence below is retained as the release/recovery procedure.
 
 1. Owner: sign in to the AWS preview and enter/test the provider key in Settings.
    Agent: run `python scripts/aws_qualify.py owner-ai` and verify an uncached
@@ -67,9 +74,9 @@ additional AWS facility with one-day Free-plan retention.
     recovery schedule. Retain original private Supabase data and encrypted
     checkpoints during the recovery window.
 
-The main-site write pause, final promotion and production rollback have not been
-performed. The remaining manual input is the provider key; subsequent operator
-work is already authorized by the migration request.
+The write pauses, final recovery set, main-domain promotion and production smoke
+checks passed. Frontend rollback/re-promotion passed on the isolated preview;
+a cross-database production rollback after AWS writes is not a tested guarantee.
 
 ## Rollback boundary
 

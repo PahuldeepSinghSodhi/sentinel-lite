@@ -2,9 +2,9 @@
 
 **Evidence-backed procurement review, from uploaded files to a documented decision.** Sentinel checks transactions against an approved rate card, identifies possible duplicates and unusual charges, and lets a reviewer inspect sources, record decisions, ask document questions, and export a case report. The anomaly scan is deterministic; an AI model is called only for a requested explanation or document answer.
 
-[Try the invite-only cloud beta](https://sentinel-document-intelligence.vercel.app) · [Cloud architecture and deployment](docs/cloud-deployment.md) · [Portfolio and résumé wording](docs/portfolio-notes.md)
+[Try the invite-only cloud beta](https://sentinel-document-intelligence.vercel.app) · [AWS architecture](docs/aws-architecture.md) · [Migration and recovery](docs/aws-execution-status.md) · [Portfolio and résumé wording](docs/portfolio-notes.md)
 
-The local version remains the default and uses SQLite, local files, and Ollama. The separately configured cloud beta uses Vercel, Modal, and Supabase. A signed-in synthetic upload-to-report walkthrough passed on 2026-10-21, but hosted AI, second-account isolation, OAuth providers, and deletion still need live verification. **This is a portfolio beta, not a production-ready procurement or security service.**
+The local version remains the default and uses SQLite, local files, and Ollama. The deployed cloud beta keeps its Vercel frontend and uses AWS for the API, warmed worker, PostgreSQL, private files, login, provider-key storage, monitoring and scheduled recovery copies. The main domain was switched on October 25, 2026 after live hosted-AI, isolation, workflow, recovery and Chrome continuity checks. **This is a portfolio beta with one application host and a Single-AZ database, not a high-availability procurement or security service.**
 
 ## Why this exists
 
@@ -15,12 +15,13 @@ Procurement reviewers often have to reconcile transaction rows, approved prices,
 | Responsibility | Local mode | Invite-only cloud beta |
 | --- | --- | --- |
 | Interface | React/Vite on the user's computer | React/Vite on Vercel |
-| API and processing | Local FastAPI process | FastAPI API and on-demand worker on Modal |
-| Identity and case history | Single-user SQLite | Supabase Auth and Postgres; API checks invitation and case ownership |
-| Documents and indexes | Local files and per-case FAISS indexes | Private Supabase Storage; temporary worker scratch space |
-| AI on request | Local Ollama | User-selected supported provider; key kept server-side in Supabase Vault |
+| API and processing | Local FastAPI process | API Gateway private integration to EC2 FastAPI and a warmed CPU worker |
+| Identity and case history | Single-user SQLite | Cognito email codes and private RDS PostgreSQL; live invitation and ownership checks |
+| Documents and indexes | Local files and per-case FAISS indexes | Private encrypted S3; temporary worker scratch space |
+| AI on request | Local Ollama | External supported provider; key kept server-side in Secrets Manager |
+| Operations | Local process logs | CloudWatch, confirmed email alerts, EventBridge/SSM checks and encrypted recovery copies |
 
-In cloud mode, Start review and Scan create durable Postgres jobs. The UI can show queued, running, completed, or failed status after a refresh; a worker prepares documents and scans transactions, with retry and recovery paths. Scanning makes **zero model calls**. See the [deployment runbook](docs/cloud-deployment.md) for routes, security boundaries, quotas, and operational trade-offs. Cloud mode does not upload existing local cases automatically.
+In AWS mode, uploads are authorized for direct S3 transfer and validated in the worker. Preparation, scans, questions, investigations and reports use durable Postgres jobs. The UI can show queued, running, completed or failed status after a refresh. Scanning makes **zero model calls**. Returning to a tab or refreshing credentials preserves the approved workspace; a new page load verifies access again. See the [AWS architecture](docs/aws-architecture.md) and [recovery runbook](docs/aws-recovery.md). Cloud mode does not upload existing local cases automatically. The [old Modal/Supabase runbook](docs/cloud-deployment.md) is retained for recovery reference.
 
 ## What a review looks like
 

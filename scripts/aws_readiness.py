@@ -43,9 +43,15 @@ def main():
     checks["owner_key_reentered"]=request(authenticated("owner"),"GET","/me/model").json()["configured"]
     qualification=json.loads((base/"qualification.json").read_text())
     checks["hosted_ai_passed"]=qualification.get("owner_ai",{}).get("answer_saved",False)
+    checks["hosted_investigation_passed"]=qualification.get("owner_investigation",{}).get("saved",False)
+    if state.get("frontend_promoted"):
+        workflow=json.loads((base/"production-workflow.json").read_text())
+        checks["production_browser_passed"]=browser.get("testedUrl")=="https://sentinel-document-intelligence.vercel.app" and not browser.get("legacyBackendRequests")
+        checks["production_ai_report_and_cors_passed"]=workflow["ai_answer_saved"] and workflow["production_download_cors_verified"]
+        checks["legacy_compute_stopped"]=state.get("legacy_modal_stopped",False)
     result={"checked_at":datetime.now(timezone.utc).isoformat(),"checks":checks,
         "remaining_credits_usd":plan["accountPlanRemainingCredits"]["amount"],
-        "preview_url":state["preview_url"],"production_cutover_complete":False}
+        "preview_url":state["preview_url"],"production_cutover_complete":state.get("production_cutover_complete",False)}
     (base/"readiness.json").write_text(json.dumps(result,indent=2))
     print(json.dumps(result,indent=2))
 
